@@ -1,9 +1,10 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
-// Localhost only for now. When this moves to a server, change `host`
-// (e.g. to '0.0.0.0') or deploy the static `dist/` folder from `npm run build`.
+// Dev server is localhost only. The live site is the static `dist/` build on GitHub Pages
+// (`npm run deploy`); `base: './'` keeps asset links relative so it works under any sub-path.
 export default defineConfig({
+  base: './',
   plugins: [react()],
   server: { host: 'localhost', port: 5173, strictPort: true },
   preview: { host: 'localhost', port: 4173, strictPort: true },
