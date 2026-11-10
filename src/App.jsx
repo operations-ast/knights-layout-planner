@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   clone, clamp, snap, store, solve, tableSig, fp, norm180, norm360, autoQty, tentOrigin, exitsFromLayout, nextExitSpot,
-  chandsToList, nextChandelierSpot, clampChandelier,
+  chandsToList, nextChandelierSpot, clampChandelier, headSeatSpot, headCap, HEAD_CHAIR,
 } from './lib/planner.js';
 import { wallSideAt } from './lib/shape.js';
 import { MAX_SEATS, SEATING } from './lib/constants.js';
 import { viewOf, writeBack, migrate, blankTent, placeTent, arrangeTents, tentBox } from './lib/model.js';
+import logoUrl from './assets/knights-logo.png';
 import Rail from './components/Rail.jsx';
+import PdfPreview from './components/PdfPreview.jsx';
 import PlanSvg from './components/PlanDrawing.jsx';
 import SelInfo from './components/SelInfo.jsx';
 import View3D from './components/View3D.jsx';
@@ -120,6 +122,27 @@ export default function App() {
   };
   // back to automatic tables; also free the tent size again unless floor items were placed by hand
   const resetTables = () => { update((n) => { n.tables = null; if (!Object.keys(n.pos).length) n.tentSize = 'auto'; }); setSel(null); };
+  // head table chairs: the first move/remove/add turns the evenly spaced set into the user's own list (acc.head.chairs)
+  const headItem = lay.items.find((i) => i.def.id === 'head');
+  const headIdx = sel && sel.startsWith('h:') ? +sel.slice(2) : -1;
+  const editHeadChairs = (fn) => {
+    if (!headItem) return;
+    update((n) => { const h = n.acc.head; if (!Array.isArray(h.chairs)) h.chairs = headItem.chairs.map((c) => ({ x: c.x, y: c.y })); fn(h.chairs); });
+  };
+  const moveHeadChair = (i, x, y) => {
+    const [w, h] = headItem.dims;
+    editHeadChairs((c) => { if (c[i]) c[i] = { x: clamp(x, HEAD_CHAIR, w - HEAD_CHAIR), y: clamp(y, HEAD_CHAIR, h - HEAD_CHAIR) }; });
+  };
+  const removeHeadChair = (i) => { editHeadChairs((c) => { c.splice(i, 1); }); setSel(headItem ? 'head' : null); };
+  const addHeadChair = () => {
+    if (!headItem || headItem.chairs.length >= headCap(headItem.dims[0])) return;
+    const spot = headSeatSpot(headItem);
+    editHeadChairs((c) => { c.push(spot); });
+    setSel('h:' + headItem.chairs.length);
+  };
+  const resetHeadChairs = () => { update((n) => { delete n.acc.head.chairs; }); if (sel && sel.startsWith('h:')) setSel('head'); };
+  // pointer movement in tent feet -> the head table's own (unrotated) frame
+  const toHeadFrame = (dx, dy) => { const a = (headItem ? headItem.rot : 0) * Math.PI / 180, c = Math.cos(a), si = Math.sin(a); return [dx * c + dy * si, -dx * si + dy * c]; };
   const moveUnit = (n, i, x, y) => { const { hx, hy } = SEATING[lay.units[i].type] || lay.S; n.tables.pts[i] = { ...n.tables.pts[i], x: clamp(x, hx, lay.L - hx), y: clamp(y, hy, lay.W - hy) }; };
 
   // --- drawing interaction ---
@@ -127,6 +150,9 @@ export default function App() {
 
   const onPointerDown = (e) => {
     const svg = svgRef.current;
+    // items call preventDefault (no text selection while dragging), which also stops the click focusing the drawing;
+    // focus it here so arrow keys, R and Delete act on what was just picked
+    const wrap = svg.closest('.svgwrap'); if (wrap && document.activeElement !== wrap) wrap.focus({ preventScroll: true });
     if (calib && view === 'site') {
       const p = svgPt(e), pt = { x: p.x, y: p.y };
       setCalib((c) => ({ pts: c.pts.length >= 2 ? [pt] : [...c.pts, pt] }));
@@ -150,6 +176,12 @@ export default function App() {
       drag.current = { unit: i, ox: un.x, oy: un.y, px: p.x, py: p.y, moved: false };
       setSel('u:' + i); svg.setPointerCapture(e.pointerId); setDragging(true); e.preventDefault(); return;
     }
+    const hs = e.target.closest('[data-hseat]');
+    if (hs && headItem) {
+      const i = +hs.dataset.hseat, c = headItem.chairs[i]; if (!c) return; const p = svgPt(e);
+      drag.current = { hseat: i, ox: c.x, oy: c.y, px: p.x, py: p.y, moved: false };
+      setSel('h:' + i); svg.setPointerCapture(e.pointerId); setDragging(true); e.preventDefault(); return;
+    }
     const g = e.target.closest('[data-key]');
     if (!g) { setSel(null); return; }
     const key = g.dataset.key, p = svgPt(e);
@@ -170,6 +202,7 @@ export default function App() {
     const p = svgPt(e), dx = p.x - d.px, dy = p.y - d.py;
     if (!d.moved && Math.hypot(dx, dy) < 0.4) return;
     if (d.chand != null) { d.moved = true; moveChand(d.chand, snap(d.ox + dx), snap(d.oy + dy)); return; }
+    if (d.hseat != null) { d.moved = true; const [lx, ly] = toHeadFrame(dx, dy); moveHeadChair(d.hseat, snap(d.ox + lx), snap(d.oy + ly)); return; }
     if (d.exit != null) {
       // slide the opening to whichever wall the pointer is nearest
       d.moved = true; const { side, f } = wallSideAt(lay.sh, p.x, p.y);
@@ -251,6 +284,13 @@ export default function App() {
       if (step) editExits((x) => { x[exitIdx] = { ...x[exitIdx], f: clamp(ex.c / (hz ? lay.L : lay.W) + step, 0, 1) }; });
       return;
     }
+    if (headIdx >= 0) {
+      const c = headItem && headItem.chairs[headIdx]; if (!c) return;
+      if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); removeHeadChair(headIdx); return; }
+      if (e.key === '+' || e.key === '=') { e.preventDefault(); addHeadChair(); return; }
+      if (!m) return; e.preventDefault();
+      const [lx, ly] = toHeadFrame(m[0] * 0.5, m[1] * 0.5); moveHeadChair(headIdx, c.x + lx, c.y + ly); return;
+    }
     if (sel.startsWith('u:')) {
       const i = +sel.slice(2), u = lay.units[i]; if (!u) return;
       if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); removeTable(i); return; }
@@ -324,30 +364,51 @@ export default function App() {
     setCalib(null);
   };
 
+  // client PDF: the library loads only when first used
+  const [pdfState, setPdfState] = useState('idle'); // idle | busy | error
+  const [pdfDoc, setPdfDoc] = useState(null); // { blob, filename } shown in the preview
+  const downloadPdf = async () => {
+    if (pdfState === 'busy') return;
+    setPdfState('busy');
+    try {
+      const { makeClientPdf } = await import('./lib/pdf.js');
+      setPdfDoc(await makeClientPdf({ model, tents: tentList, active, ph, photoSrc }));
+      setPdfState('idle');
+    } catch (err) {
+      console.error(err); setPdfState('error'); setTimeout(() => setPdfState('idle'), 4000);
+    }
+  };
+
   const loadLayout = (s) => {
     const n = migrate(s), src = n.photo && s.photoSrc ? s.photoSrc : null;
     if (!src) n.photo = null;
     setModel(n); setPhotoSrc(src); savePhoto(src); setCalib(null); setSel(null);
   };
+  /** Start a blank plan (default site, one default tent, no photo). Saved layouts are untouched. */
+  const newLayout = () => {
+    setModel(migrate(null)); setPhotoSrc(null); savePhoto(null); setCalib(null); setSel(null); setViewState('tent');
+  };
 
   return (<>
     <header className="top">
-      <svg className="mark" viewBox="0 0 42 42" aria-hidden="true">
-        <rect x="3" y="9" width="36" height="24" fill="none" stroke="currentColor" strokeWidth="2.5" />
-        <path d="M3 9 L21 21 L39 9 M3 33 L21 21 L39 33" fill="none" stroke="currentColor" strokeWidth="1.5" />
-        <circle cx="21" cy="21" r="2.6" fill="currentColor" />
-      </svg>
+      <img className="logo" src={logoUrl} alt="Knights Tent & Party Rental" />
       <div>
         <h1>Tent Layout Planner</h1>
         <p>Set the site, guest count and extras. The tent size, plan and rental list update as you go. Drag any floor item to move it.</p>
       </div>
+      <button className="btn primary pdfbtn" onClick={downloadPdf} disabled={pdfState === 'busy'} aria-live="polite"
+        title="Download a client-ready PDF: overview, 3D preview, floor plans and rental summary">
+        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v9m0 0-3.5-3.5M10 12l3.5-3.5M4 14v2.5h12V14" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
+        {pdfState === 'busy' ? 'Preparing PDF…' : pdfState === 'error' ? 'PDF failed, try again' : 'Download PDF'}
+      </button>
     </header>
+    {pdfDoc && <PdfPreview doc={pdfDoc} onClose={() => setPdfDoc(null)} />}
 
     <div className="app">
       <Rail st={st} lay={lay} model={model} active={active}
         tents={tentList.map((t) => ({ name: t.st.name, guests: t.st.guests, lay: t.lay }))}
         sel={sel} onSelect={selectFromRail} update={update} ph={ph} photoSrc={photoSrc}
-        onPhotoFile={loadPhoto} onCalib={startCalib} onPhotoDel={removePhoto} onPhotoScale={scalePhoto} onLoadLayout={loadLayout}
+        onPhotoFile={loadPhoto} onCalib={startCalib} onPhotoDel={removePhoto} onPhotoScale={scalePhoto} onLoadLayout={loadLayout} onNewLayout={newLayout}
         onPickTent={pickTent} onAddTent={() => addTent(false)} onDuplicateTent={() => addTent(true)} onRemoveTent={removeTent} onArrange={arrangeAll}
         onAddTable={addTable} onResetTables={resetTables} />
 
@@ -376,7 +437,8 @@ export default function App() {
               onAddExit={() => { editExits((x) => { x.push(nextExitSpot(x)); }); }}
               onRemoveChand={() => removeChand(chandIdx)}
               onAddChand={() => editChands((c) => { c.push(nextChandelierSpot(lay)); })}
-              onSeats={(k) => setSeats(unitIdx, k)} onTableType={(t) => setTableType(unitIdx, t)} onAddTable={addTable} onRemoveTable={() => removeTable(unitIdx)} />
+              onSeats={(k) => setSeats(unitIdx, k)} onTableType={(t) => setTableType(unitIdx, t)} onAddTable={addTable} onRemoveTable={() => removeTable(unitIdx)}
+              onAddHeadSeat={addHeadChair} onRemoveHeadSeat={() => removeHeadChair(headIdx)} onResetHeadSeats={resetHeadChairs} />
           </div>
           <div className="svgwrap" tabIndex={0} onKeyDown={onKeyDown}
             aria-label="Layout drawing. Select an item, then use arrow keys to nudge, R to rotate, Delete to remove."

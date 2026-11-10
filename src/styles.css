@@ -20,7 +20,24 @@ button,input,select{font:inherit;color:inherit}
 
 .top{display:flex;align-items:center;gap:14px;max-width:1500px;margin:0 auto 16px}
 .mark{width:42px;height:42px;flex:none;color:var(--accent)}
+/* logo file is black on white: invert to white on black, then screen-blend so the black drops out on the dark page */
+.logo{height:72px;width:auto;flex:none;filter:invert(1);mix-blend-mode:screen}
+@media (max-width:640px){.top{flex-wrap:wrap}.logo{height:56px}}
 .top h1{font-size:28px;line-height:1}
+.pdfbtn{margin-left:auto;align-self:flex-start;display:inline-flex;align-items:center;gap:7px;white-space:nowrap}
+.pdfbtn svg{width:17px;height:17px;flex:none}
+.pdfbtn:disabled{opacity:.7;cursor:progress}
+/* PDF preview */
+.pdfmodal{position:fixed;inset:0;z-index:50;background:rgba(5,8,12,.72);display:flex;align-items:center;justify-content:center;padding:24px}
+.pdfbox{background:var(--panel);border:1px solid var(--line);border-radius:8px;width:min(1180px,100%);height:min(920px,100%);display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.5)}
+.pdfhead{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.pdfhead h2{font-size:18px}
+.pdfhead .fname{color:var(--muted);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:1}
+.pdfhead .btn{display:inline-flex;align-items:center;gap:7px}
+.pdfhead .btn svg{width:16px;height:16px}
+.pdfframe{flex:1;width:100%;border:0;background:#525659}
+.pdffall{flex:1;display:grid;place-content:center;gap:10px;text-align:center;padding:24px;color:var(--muted)}
+@media (max-width:640px){.pdfmodal{padding:0}.pdfbox{border-radius:0;height:100%}}
 .top p{margin:4px 0 0;color:var(--muted);max-width:62ch}
 
 .app{display:grid;grid-template-columns:320px minmax(0,1fr);gap:16px;max-width:1500px;margin:0 auto;align-items:start}
@@ -122,6 +139,9 @@ tr.grp td{font-family:var(--f-display);font-weight:600;font-size:13px;letter-spa
 .pole{fill:var(--ink)} .pole.inner{fill:var(--accent)}
 .tbl{fill:var(--table);stroke:var(--ink);stroke-width:1}
 .chair{fill:var(--chair)}
+.hseat{cursor:grab;stroke:transparent;stroke-width:0.6}
+.hseat:hover{stroke:var(--accent)}
+.hseat.sel{fill:var(--sel);stroke:var(--sel)}
 .zone{fill:var(--zone);stroke:var(--line);stroke-width:1;stroke-dasharray:3 3}
 .stage{fill:var(--stage)}
 .deck{stroke:var(--tent);stroke-width:.75;opacity:.6}

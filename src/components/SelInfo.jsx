@@ -1,6 +1,17 @@
 import { useRef } from 'react';
 import { SIDE_LABELS, KIND_LABELS } from './ExitsEditor.jsx';
 import { MAX_SEATS, TABLE_TYPES } from '../lib/constants.js';
+import { headCap } from '../lib/planner.js';
+
+/** Seat count, add and reset buttons for the head table (shown with the table or one of its chairs selected). */
+function HeadSeatCtl({ item, onAddHeadSeat, onResetHeadSeats }) {
+  const n = item.chairs.length, full = n >= headCap(item.dims[0]);
+  return (<>
+    <span className="hint">{n} seat{n === 1 ? '' : 's'}</span>
+    <button className="btn" disabled={full} title={full ? 'No more room along this table' : undefined} onClick={onAddHeadSeat}>+ Add seat</button>
+    {item.customChairs && <button className="btn" onClick={onResetHeadSeats}>Reset seats</button>}
+  </>);
+}
 
 function RotCtl({ angle, selKey, onRotate, onSetAngle }) {
   const a = Math.round(angle);
@@ -16,7 +27,7 @@ function RotCtl({ angle, selKey, onRotate, onSetAngle }) {
   </>);
 }
 
-export default function SelInfo({ view, calib, sel, lay, st, onCancelCalib, onApplyCalib, onRotate, onSetAngle, onRemove, onReflow, onExitKind, onRemoveExit, onAddExit, onRemoveChand, onAddChand, onSeats, onTableType, onAddTable, onRemoveTable }) {
+export default function SelInfo({ view, calib, sel, lay, st, onCancelCalib, onApplyCalib, onRotate, onSetAngle, onRemove, onReflow, onExitKind, onRemoveExit, onAddExit, onRemoveChand, onAddChand, onSeats, onTableType, onAddTable, onRemoveTable, onAddHeadSeat, onRemoveHeadSeat, onResetHeadSeats }) {
   const ftRef = useRef(null);
   let body;
   if (view === 'site' && calib) {
@@ -37,8 +48,17 @@ export default function SelInfo({ view, calib, sel, lay, st, onCancelCalib, onAp
     const exit = view === 'tent' && sel && sel.startsWith('x:') ? lay.exits[+sel.slice(2)] : null;
     const chand = view === 'tent' && sel && sel.startsWith('c:') ? lay.chands[+sel.slice(2)] : null;
     const unit = view === 'tent' && sel && sel.startsWith('u:') ? lay.units[+sel.slice(2)] : null;
-    const item = view === 'tent' && sel && !unit && !exit && !chand ? lay.items.find((i) => i.key === sel) : null;
-    if (chand) {
+    const head = view === 'tent' && sel && sel.startsWith('h:') ? lay.items.find((i) => i.def.id === 'head') : null;
+    const hseat = head ? head.chairs[+sel.slice(2)] : null;
+    const item = view === 'tent' && sel && !unit && !exit && !chand && !head ? lay.items.find((i) => i.key === sel) : null;
+    if (hseat) {
+      body = (<>
+        <span className="name">Head table seat {+sel.slice(2) + 1}</span>
+        <span className="hint">Drag to move · arrows nudge 6"</span>
+        <HeadSeatCtl item={head} onAddHeadSeat={onAddHeadSeat} onResetHeadSeats={onResetHeadSeats} />
+        <button className="btn danger" onClick={onRemoveHeadSeat}>Remove seat</button>
+      </>);
+    } else if (chand) {
       body = (<>
         <span className="name">Chandelier {+sel.slice(2) + 1}</span>
         <span className="hint">{Math.round(chand.x)}' along · {Math.round(chand.y)}' across</span>
@@ -79,6 +99,7 @@ export default function SelInfo({ view, calib, sel, lay, st, onCancelCalib, onAp
       body = (<>
         <span className="name">{item.def.label}</span>
         <RotCtl angle={item.rot} selKey={sel} onRotate={onRotate} onSetAngle={onSetAngle} />
+        {item.def.id === 'head' && <HeadSeatCtl item={item} onAddHeadSeat={onAddHeadSeat} onResetHeadSeats={onResetHeadSeats} />}
         <button className="btn danger" onClick={onRemove}>Remove</button>
       </>);
     } else {

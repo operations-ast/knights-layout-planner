@@ -3,7 +3,7 @@ import { r2, clamp, ft, danceFinish, climateCount, siteExtent, tentOrigin } from
 import { outlinePath, wallRuns, yTop } from '../lib/shape.js';
 import { LIGHT_INSET, BANQUET_SEATS, SEATING } from '../lib/constants.js';
 
-function AccShape({ id, w, h, seats, st }) {
+function AccShape({ id, w, h, chairs, st, interactive, sel }) {
   const out = []; let k = 0; const K = () => k++;
   if (id === 'stage') {
     out.push(<rect key={K()} className="stage" width={w} height={h} />);
@@ -16,10 +16,12 @@ function AccShape({ id, w, h, seats, st }) {
     out.push(<rect key={K()} className="dfedge" width={w} height={h} />);
     if ((st.acc.dance || {}).wrap) out.push(<circle key={K()} className="wrap" cx={w / 2} cy={h / 2} r={Math.min(w, h) * 0.3} />);
   } else if (id === 'head') {
-    const n = seats || 2;
     out.push(<rect key={K()} className="tbl" x={0} y={h - 3.5} width={w} height={2.5} />);
     for (let x = 8; x < w - 0.1; x += 8) out.push(<line key={K()} className="tbl" x1={x} y1={h - 3.5} x2={x} y2={h - 1} />);
-    for (let i = 0; i < n; i++) { const cx = (i + 0.5) * w / n; out.push(<rect key={K()} className="chair" x={cx - 0.65} y={h - 5.1} width={1.3} height={1.3} rx={0.3} />); }
+    // each head table chair can be picked and dragged on its own (data-hseat)
+    (chairs || []).forEach((c, i) => out.push(
+      <rect key={K()} className={'chair' + (interactive ? ' hseat' : '') + (interactive && sel === 'h:' + i ? ' sel' : '')} data-hseat={interactive ? i : undefined}
+        x={r2(c.x - 0.65)} y={r2(c.y - 0.65)} width={1.3} height={1.3} rx={0.3} />));
   } else if (id === 'dj') {
     out.push(<rect key={K()} className="zone" width={w} height={h} />, <rect key={K()} className="tbl" x={1} y={2.8} width={w - 2} height={2} />,
       <rect key={K()} className="stage" x={0.3} y={h - 1.5} width={1.2} height={1.2} />, <rect key={K()} className="stage" x={w - 1.5} y={h - 1.5} width={1.2} height={1.2} />);
@@ -89,7 +91,7 @@ function TentDrawing({ st, l, interactive, fs, sel }) {
       <g key={'i-' + it.key} className={'item' + (interactive && sel === it.key ? ' sel' : '') + (it.fit ? '' : ' bad')} data-key={interactive ? it.key : undefined}
         transform={`translate(${r2(cx)} ${r2(cy)}) rotate(${it.rot}) translate(${-dw / 2} ${-dh / 2})`}>
         <rect className="hit" width={dw} height={dh} />
-        <AccShape id={it.def.id} w={dw} h={dh} seats={it.seats} st={st} />
+        <AccShape id={it.def.id} w={dw} h={dh} chairs={it.chairs} st={st} interactive={interactive} sel={sel} />
       </g>);
   }
   l.units.forEach((u, i) => {

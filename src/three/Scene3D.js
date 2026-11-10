@@ -10,6 +10,9 @@ import { LIGHT_INSET } from '../lib/constants.js';
 const cssv = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim() || '#888888';
 
 export default class Scene3D {
+  /** The scene on the page right now (one 3D view), so the PDF export can take a still of it. */
+  static current = null;
+
   constructor(box) {
     this.box = box;
     this.r = new THREE.WebGLRenderer({ antialias: true }); // throws without WebGL
@@ -66,8 +69,8 @@ export default class Scene3D {
       for (let i = 0; i < w / t - 0.01; i++) for (let j = 0; j < h / t - 0.01; j++) this.boxAt(c, i * t, j * t, Math.min(t, w - i * t), Math.min(t, h - j * t), 0.15, 0, F.colors[(i + j) % 2]);
       if ((st.acc.dance || {}).wrap) { const m = this.cylAt(c, w / 2, h / 2, Math.min(w, h) * 0.3, 0.02, 0.15, '#c9b37a'); m.scale.y = 0.02; }
     } else if (id === 'head') {
-      this.boxAt(c, 0, h - 3.5, w, 2.5, 2.5, 0, linen); const n = it.seats || 2;
-      for (let i = 0; i < n; i++) this.chair3D(c, (i + 0.5) * w / n, h - 4.45, Math.PI / 2, st.chairStyle);
+      this.boxAt(c, 0, h - 3.5, w, 2.5, 2.5, 0, linen);
+      for (const ch of it.chairs || []) this.chair3D(c, ch.x, ch.y, Math.PI / 2, st.chairStyle);
     } else if (id === 'dj') { this.boxAt(c, 1, 2.8, w - 2, 2, 3, 0, dark); this.boxAt(c, 0.3, h - 1.5, 1.2, 1.2, 4.5, 0, dark); this.boxAt(c, w - 1.5, h - 1.5, 1.2, 1.2, 4.5, 0, dark); }
     else if (id === 'buffet') { this.boxAt(c, 0, h / 2 - 1.25, w, 2.5, 2.5, 0, linen); for (let x = 1; x < w - 1; x += 2.6) this.boxAt(c, x, h / 2 - 0.6, 1.8, 1.2, 0.5, 2.5, '#b9c0c7'); }
     else if (id === 'bar') { this.boxAt(c, 2, 0.5, w - 4, 1.5, 3, 0, dark); this.boxAt(c, 1, 3, w - 2, 2.5, 3.5, 0, '#3a434e'); }
@@ -116,7 +119,8 @@ export default class Scene3D {
       gm = new THREE.MeshBasicMaterial({ map: this.tex }); this.mats._photo = gm;
     } else gm = this.mat(cssv(st.surface === 'grass' || st.surface === 'gravel' ? '--grass' : '--hard'));
     const ground = new THREE.Mesh(this.geo(new THREE.PlaneGeometry(e.l, e.w)), gm); ground.rotation.x = -Math.PI / 2; ground.position.set(e.l / 2, 0, e.w / 2); root.add(ground);
-    const far = new THREE.Mesh(this.geo(new THREE.PlaneGeometry(e.l * 4 + 400, e.w * 4 + 400)), this.mat(cssv('--soft'))); far.rotation.x = -Math.PI / 2; far.position.set(e.l / 2, -0.05, e.w / 2); root.add(far);
+    this.ground = ph ? null : ground; this.groundSoft = st.surface === 'grass' || st.surface === 'gravel';
+    const far = new THREE.Mesh(this.geo(new THREE.PlaneGeometry(e.l * 4 + 400, e.w * 4 + 400)), this.mat(cssv('--soft'))); far.rotation.x = -Math.PI / 2; far.position.set(e.l / 2, -0.05, e.w / 2); this.far = far; root.add(far);
     for (const t of tents) {
       const r = this.buildTent(t.st, t.lay, ph, opts);
       if (t === a) { this.inner = r.T; this.dims = r.dims; this.lay = t.lay; }
@@ -256,6 +260,38 @@ export default class Scene3D {
       pos = ex ? w(ex.x + ix, 5.5, ex.y + iy) : w(L / 2, 5.5, W - 2.5); tgt = w(fx, 3.5, fy);
     } else { pos = w(-L * 0.35, M * 0.5 + peak, W + M * 0.75); tgt = w(L / 2, 2, W / 2); }
     this.cam.position.copy(pos); this.ctl.target.copy(tgt); this.ctl.update(); this.draw();
+  }
+
+  /**
+   * A still for the client PDF: the preset corner view, w × h pixels, as a JPEG data URL.
+   * light: true swaps in a light sky and ground (for a white page); false keeps the on-screen dark colours.
+   * The live view (size, camera, colours) is put back afterwards.
+   */
+  snapshot(w, h, { light = true } = {}) {
+    if (!this.inner) return null;
+    const keep = { pos: this.cam.position.clone(), tgt: this.ctl.target.clone(), bg: this.scene.background, mode: this.camMode, pr: this.r.getPixelRatio() };
+    const swaps = [];
+    const swap = (mesh, color) => { if (!mesh) return; swaps.push([mesh, mesh.material]); mesh.material = new THREE.MeshLambertMaterial({ color: new THREE.Color(color) }); };
+    if (light) {
+      this.scene.background = new THREE.Color('#e8eef4');
+      const lawn = this.groundSoft ? '#a7bf93' : '#cdd1d6';
+      swap(this.far, this.ground ? lawn : '#d9dfd3'); // with a site photo, only the area round it changes
+      swap(this.ground, lawn);
+    }
+    let url = null;
+    try {
+      this.r.setPixelRatio(1); this.r.setSize(w, h, false); this.cam.aspect = w / h; this.cam.updateProjectionMatrix();
+      this.setCam('corner'); // preset view, then pull in closer so the tent fills the frame
+      const off = this.cam.position.clone().sub(this.ctl.target);
+      this.cam.position.copy(this.ctl.target).addScaledVector(off, 0.8); this.ctl.update(); this.draw();
+      url = this.r.domElement.toDataURL('image/jpeg', 0.92); // same task as the render, so the buffer is still there
+    } finally {
+      for (const [m, mat] of swaps) { m.material.dispose(); m.material = mat; }
+      this.scene.background = keep.bg; this.camMode = keep.mode; this.r.setPixelRatio(keep.pr);
+      this.cam.position.copy(keep.pos); this.ctl.target.copy(keep.tgt); this.ctl.update();
+      this.resize();
+    }
+    return url;
   }
 
   dispose() {

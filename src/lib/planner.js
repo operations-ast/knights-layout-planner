@@ -121,17 +121,52 @@ export function getExits(g, W, L, sh = { oval: false, W, L, e: 0 }, custom = nul
   });
 }
 
+// head table: 4 seats along each 8' banquet table; a custom count sets the length
+export const HEAD_MAX = 40;
+export const HEAD_CHAIR = 0.55; // how close a chair centre may come to the table's edge
+export const headSeatsDefault = (n) => clamp(Math.round(n) || 8, 1, HEAD_MAX);
+/** Most chairs that fit along a head table w feet long. */
+export const headCap = (w) => Math.max(2, Math.floor(w / 1.5));
+
+/**
+ * Head table size and chairs. s: the head table's settings ({ size, seats, chairs }).
+ * chairs are chair centres in the table's own frame (x along the table, y toward the back; table at the back edge).
+ * s.chairs = null means evenly spaced; a list means the user moved, removed or added seats by hand.
+ */
+export function headTable(s) {
+  const a = ACC.find((x) => x.id === 'head');
+  let w, h, n, sweet = false;
+  if (s.size === 'custom') { n = headSeatsDefault(s.seats); w = Math.max(8, Math.ceil(n / 4) * 8); h = 6; }
+  else { [w, h, n] = a.sizes[s.size] || a.sizes[a.def]; sweet = s.size === 'Sweetheart · 2'; }
+  const auto = Array.from({ length: n }, (_, i) => ({ x: r2((i + 0.5) * w / n), y: h - 4.45 }));
+  const custom = Array.isArray(s.chairs);
+  const chairs = custom ? s.chairs.map((c) => ({ x: clamp(+c.x || 0, HEAD_CHAIR, w - HEAD_CHAIR), y: clamp(+c.y || 0, HEAD_CHAIR, h - HEAD_CHAIR) })) : auto;
+  return { dims: [w, h], seats: chairs.length, chairs, custom, sweet, front: h - 4.45 };
+}
+
+/** A spot for one more chair along the front of the head table: the widest gap between the chairs already there. */
+export function headSeatSpot(item) {
+  const [w] = item.dims, y = item.front ?? item.dims[1] - 4.45;
+  let best = { x: w / 2, y }, bestD = -1;
+  for (let x = HEAD_CHAIR + 0.35; x <= w - HEAD_CHAIR - 0.35 + 1e-6; x += 0.5) {
+    const d = Math.min(Infinity, ...item.chairs.map((c) => Math.hypot(c.x - x, c.y - y)));
+    if (d > bestD) { bestD = d; best = { x: r2(x), y }; }
+  }
+  return best;
+}
+
 function accInstances(st) {
   const out = [];
   for (const a of ACC) {
     const s = st.acc[a.id]; if (!s || !s.on) continue;
-    let dims, seats = 0, n = 1;
+    let dims, seats = 0, n = 1, extra = null;
     if (a.dance) dims = danceDims(st, s);
+    else if (a.id === 'head') { const t = headTable(s); dims = t.dims; seats = t.seats; extra = { chairs: t.chairs, customChairs: t.custom, sweet: t.sweet, front: t.front }; }
     else if (a.id === 'stage' && s.size === 'custom') dims = [s.cl || 12, s.cw || 8];
     else if (a.sizes) { const o = a.sizes[s.size] || a.sizes[a.def]; dims = [o[0], o[1]]; seats = o[2] || 0; }
     else dims = a.dims;
     if (a.qty) n = s.qty === 'auto' || !s.qty ? autoQty(a.id, st.guests) : +s.qty;
-    for (let k = 0; k < n; k++) out.push({ key: a.qty ? a.id + '-' + k : a.id, def: a, dims, seats, idx: k, n });
+    for (let k = 0; k < n; k++) out.push({ key: a.qty ? a.id + '-' + k : a.id, def: a, dims, seats, idx: k, n, ...extra });
   }
   return out;
 }
@@ -184,7 +219,7 @@ export function layout(st, W, L) {
       }
       if (!pl) { const wall = a.walls[0]; rot = WALLROT[wall]; const [w, h] = fp(it.dims, rot); const p = place(wall, a.f, it.idx, it.n, w, h); pl = { x: p.x, y: p.y, w, h, fit: false, wall }; }
     }
-    items.push({ ...pl, key: it.key, def: a, dims: it.dims, seats: it.seats, rot });
+    items.push({ ...pl, key: it.key, def: a, dims: it.dims, seats: it.seats, rot, chairs: it.chairs, customChairs: it.customChairs, sweet: it.sweet, front: it.front });
     if (!pl.fit) allFit = false;
   }
   // seating fill: rows of tables that flow around floor items, poles and exits

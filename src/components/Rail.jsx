@@ -4,7 +4,7 @@ import NumInput from './NumInput.jsx';
 import SavedLayouts from './SavedLayouts.jsx';
 import ExitsEditor from './ExitsEditor.jsx';
 import TentsEditor from './TentsEditor.jsx';
-import { chandsToList, nextChandelierSpot } from '../lib/planner.js';
+import { chandsToList, nextChandelierSpot, headTable, headSeatsDefault, HEAD_MAX } from '../lib/planner.js';
 
 const opt = (list) => list.map(([v, t]) => <option key={v} value={v}>{t}</option>);
 
@@ -77,6 +77,38 @@ function AccList({ st, update }) {
           );
         }
 
+        if (a.id === 'head') {
+          // a new size or seat count puts the chairs back to even spacing
+          const resize = (fn) => setAcc((x, n) => { fn(x); delete x.chairs; delete n.pos.head; });
+          return (
+            <Fragment key={a.id}>
+              <div className="accrow">
+                {toggle}
+                <select aria-label="Head table size" value={s.size || a.def} disabled={!s.on}
+                  onChange={(e) => { const v = e.target.value; resize((x) => { if (v === 'custom' && !x.seats) x.seats = (a.sizes[x.size] || a.sizes[a.def])[2]; x.size = v; }); }}>
+                  {Object.keys(a.sizes).map((k) => <option key={k} value={k}>{k}</option>)}
+                  <option value="custom">Custom seats</option>
+                </select>
+              </div>
+              {s.on && s.size === 'custom' && (
+                <div className="dcustom">
+                  <label className="field"><span>Seats (1–{HEAD_MAX})</span>
+                    <NumInput min={1} max={HEAD_MAX} step={1} value={headSeatsDefault(s.seats)} parse={parseInt}
+                      valid={(n) => Number.isInteger(n) && n >= 1 && n <= HEAD_MAX} onValue={(v) => resize((x) => { x.seats = v; })} />
+                  </label>
+                  <span className="hint">{headTable(s).dims[0]}' long</span>
+                </div>
+              )}
+              {s.on && Array.isArray(s.chairs) && (
+                <div className="dsub">
+                  <span className="hint">{s.chairs.length} seat{s.chairs.length === 1 ? '' : 's'}, arranged by hand</span>
+                  <button className="btn sm" onClick={() => setAcc((x) => { delete x.chairs; })}>Reset seats</button>
+                </div>
+              )}
+            </Fragment>
+          );
+        }
+
         let ctl = <span />;
         if (a.sizes) {
           ctl = (
@@ -99,7 +131,7 @@ function AccList({ st, update }) {
 }
 
 export default function Rail({
-  st, lay, model, tents, active, sel, onSelect, update, ph, photoSrc, onPhotoFile, onCalib, onPhotoDel, onPhotoScale, onLoadLayout,
+  st, lay, model, tents, active, sel, onSelect, update, ph, photoSrc, onPhotoFile, onCalib, onPhotoDel, onPhotoScale, onLoadLayout, onNewLayout,
   onPickTent, onAddTent, onDuplicateTent, onRemoveTent, onArrange, onAddTable, onResetTables,
 }) {
   const fileRef = useRef(null);
@@ -287,7 +319,7 @@ export default function Rail({
         <label className="chk"><input type="checkbox" checked={!!st.generator} onChange={chk('generator')} /> Generator</label>
       </section>
 
-      <SavedLayouts model={model} ph={ph} photoSrc={photoSrc} onLoad={onLoadLayout} />
+      <SavedLayouts model={model} ph={ph} photoSrc={photoSrc} onLoad={onLoadLayout} onNew={onNewLayout} />
     </aside>
   );
 }

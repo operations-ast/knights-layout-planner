@@ -15,8 +15,8 @@ export default function View3D({ tents, active, photoSrc }) {
     let s;
     try { s = new Scene3D(boxRef.current); }
     catch { setMsg('The 3D view needs WebGL, which is turned off in this browser.'); return undefined; }
-    sceneRef.current = s; setMsg(null);
-    return () => { s.dispose(); sceneRef.current = null; };
+    sceneRef.current = s; Scene3D.current = s; setMsg(null);
+    return () => { if (Scene3D.current === s) Scene3D.current = null; s.dispose(); sceneRef.current = null; };
   }, []);
 
   // rebuild shortly after the layout settles

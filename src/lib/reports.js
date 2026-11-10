@@ -39,7 +39,9 @@ export function rentals(st, l) {
     if (s.wrap) floor.push(['Dance floor vinyl wrap', 1, 'Custom graphic, full or partial coverage']);
   }
   for (const i of cnt('stage')) floor.push([`Stage ${i.dims[0]}' × ${i.dims[1]}'`, Math.ceil(i.dims[0] * i.dims[1] / 32), `4' × 8' decks${i.dims[0] % 4 || i.dims[1] % 4 ? ' (size rounds up to full decks)' : ''} · ${i.dims[0] + 2 * i.dims[1]} lin ft skirting · steps`]);
-  for (const i of cnt('head')) floor.push([i.seats === 2 ? 'Sweetheart table' : `Head table, ${i.seats} seats`, i.seats === 2 ? 1 : Math.ceil(i.dims[0] / 8), i.seats === 2 ? 'With linen' : "8' banquet tables, linens and skirting"]);
+  for (const i of cnt('head')) floor.push(i.sweet
+    ? [`Sweetheart table${i.seats !== 2 ? `, ${i.seats} seat${i.seats === 1 ? '' : 's'}` : ''}`, 1, 'With linen']
+    : [`Head table, ${i.seats} seat${i.seats === 1 ? '' : 's'}`, Math.ceil(i.dims[0] / 8), `8' banquet tables (${i.dims[0]}' long), linens and skirting`]);
   if (cnt('buffet').length) floor.push(["8' banquet tables for buffet", cnt('buffet').length * 2, `${cnt('buffet').length} double-sided line${cnt('buffet').length > 1 ? 's' : ''}, linens`]);
   if (cnt('bar').length) floor.push(['Bar with back bar', cnt('bar').length, 'About 1 bar per 150 guests']);
   if (cnt('dj').length) floor.push(['DJ table', 1, "6' table, black linen, power drop"]);
