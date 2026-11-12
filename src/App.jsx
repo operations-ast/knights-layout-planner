@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   clone, clamp, snap, store, solve, tableSig, fp, norm180, norm360, autoQty, tentOrigin, exitsFromLayout, nextExitSpot,
   chandsToList, nextChandelierSpot, clampChandelier, headSeatSpot, headCap, HEAD_CHAIR,
@@ -13,6 +13,9 @@ import PlanSvg from './components/PlanDrawing.jsx';
 import SelInfo from './components/SelInfo.jsx';
 import View3D from './components/View3D.jsx';
 import { Stats, TitleBlock, RentalList, Notes } from './components/Panels.jsx';
+import { geocode, satelliteImage } from './lib/mapbox.js';
+// the 3D map (Mapbox GL) is large, so it loads only when the site plan shows it
+const SiteMap3D = lazy(() => import('./components/SiteMap3D.jsx'));
 
 function loadInitial() {
   const saved = store('tlp-current');
@@ -37,6 +40,10 @@ export default function App() {
   const drag = useRef(null);
 
   const ph = !!(model.photo && photoSrc);
+  // site plan as a live 3D map: only for a Mapbox photo, which knows where on earth it is
+  const [siteMode, setSiteMode] = useState('3d');
+  const hasMap = ph && model.photo.source === 'mapbox' && Number.isFinite(model.photo.lat) && Number.isFinite(model.photo.lng);
+  const show3dMap = view === 'site' && hasMap && siteMode === '3d' && !calib;
   const active = model.active;
   // one merged "view" (site + tent settings) and one solved layout per tent
   const views = useMemo(() => model.tents.map((_, i) => viewOf(model, i)), [model]);
@@ -250,8 +257,16 @@ export default function App() {
     const it = lay.items.find((i) => i.key === sel); if (!it) return; const a = it.def;
     update((n) => {
       const s = n.acc[a.id];
-      if (a.qty) { const c = s.qty === 'auto' ? autoQty(a.id, n.guests) : +s.qty; if (c <= 1) s.on = false; else s.qty = String(c - 1); } else s.on = false;
-      Object.keys(n.pos).filter((k) => k.startsWith(a.id)).forEach((k) => delete n.pos[k]);
+      if (a.qty) {
+        const c = s.qty === 'auto' ? autoQty(a.id, n.guests) : +s.qty;
+        if (c <= 1) { s.on = false; Object.keys(n.pos).filter((k) => k.startsWith(a.id + '-')).forEach((k) => delete n.pos[k]); return; }
+        s.qty = String(c - 1);
+        // the others stay exactly where they are now: pin each one, renumbered to close the gap
+        lockSize(n);
+        const rest = lay.items.filter((i) => i.def.id === a.id && i.key !== sel);
+        Object.keys(n.pos).filter((k) => k.startsWith(a.id + '-')).forEach((k) => delete n.pos[k]);
+        rest.forEach((i, k) => { n.pos[a.id + '-' + k] = { x: i.x, y: i.y, rot: i.rot, t: tkey }; });
+      } else { s.on = false; delete n.pos[a.id]; }
     });
     setSel(null);
   };
@@ -312,6 +327,17 @@ export default function App() {
   };
 
   // --- satellite photo ---
+  /** Put a new site photo in place. photo: { pw, ph, fpp, calibrated, source?, ... } */
+  const applyPhoto = useCallback((src, photo) => {
+    setPhotoSrc(src); savePhoto(src);
+    setModel((s) => {
+      const n = clone(s); n.photo = photo;
+      for (const t of n.tents) t.tentAngle = 0;
+      arrangeTents(n, true); // new photo = new coordinates; lay the tents out again over it
+      return n;
+    });
+    setCalib(photo.calibrated ? null : { pts: [] }); setViewState('site'); setSel(null);
+  }, []);
   const loadPhoto = useCallback((file) => {
     if (!file || !file.type.startsWith('image/')) return;
     const rd = new FileReader();
@@ -320,20 +346,19 @@ export default function App() {
       img.onload = () => {
         const k = Math.min(1, 2000 / Math.max(img.width, img.height)), c = document.createElement('canvas');
         c.width = Math.round(img.width * k); c.height = Math.round(img.height * k); c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-        const src = c.toDataURL('image/jpeg', 0.85);
-        setPhotoSrc(src); savePhoto(src);
-        setModel((s) => {
-          const n = clone(s); n.photo = { pw: c.width, ph: c.height, fpp: Math.max(n.siteL, 60) / c.width, calibrated: false };
-          for (const t of n.tents) t.tentAngle = 0;
-          arrangeTents(n, true); // new photo = new coordinates; lay the tents out again over it
-          return n;
-        });
-        setCalib({ pts: [] }); setViewState('site'); setSel(null);
+        applyPhoto(c.toDataURL('image/jpeg', 0.85), { pw: c.width, ph: c.height, fpp: Math.max(model.siteL, 60) / c.width, calibrated: false, source: 'upload' });
       };
       img.src = rd.result;
     };
     rd.readAsDataURL(file);
-  }, []);
+  }, [applyPhoto, model.siteL]);
+  /** Find the address with Mapbox and load a satellite image about widthFt across; the scale comes with it. */
+  const loadSatellite = async (address, widthFt) => {
+    const at = await geocode(address);
+    const img = await satelliteImage(at.lat, at.lng, widthFt);
+    applyPhoto(img.src, { pw: img.pw, ph: img.ph, fpp: img.fpp, calibrated: true, source: 'mapbox', lat: at.lat, lng: at.lng, zoom: img.zoom });
+    return at;
+  };
 
   useEffect(() => {
     const onPaste = (e) => {
@@ -408,7 +433,7 @@ export default function App() {
       <Rail st={st} lay={lay} model={model} active={active}
         tents={tentList.map((t) => ({ name: t.st.name, guests: t.st.guests, lay: t.lay }))}
         sel={sel} onSelect={selectFromRail} update={update} ph={ph} photoSrc={photoSrc}
-        onPhotoFile={loadPhoto} onCalib={startCalib} onPhotoDel={removePhoto} onPhotoScale={scalePhoto} onLoadLayout={loadLayout} onNewLayout={newLayout}
+        onPhotoFile={loadPhoto} onSatellite={loadSatellite} onCalib={startCalib} onPhotoDel={removePhoto} onPhotoScale={scalePhoto} onLoadLayout={loadLayout} onNewLayout={newLayout}
         onPickTent={pickTent} onAddTent={() => addTent(false)} onDuplicateTent={() => addTent(true)} onRemoveTent={removeTent} onArrange={arrangeAll}
         onAddTable={addTable} onResetTables={resetTables} />
 
@@ -427,6 +452,12 @@ export default function App() {
               <button aria-pressed={view === 'tent'} onClick={() => setView('tent')}>Tent plan</button>
               <button aria-pressed={view === 'site'} onClick={() => setView('site')}>Site plan</button>
             </div>
+            {view === 'site' && hasMap && (
+              <div className="seg" role="group" aria-label="Site plan style">
+                <button aria-pressed={siteMode === '3d'} onClick={() => setSiteMode('3d')}>3D map</button>
+                <button aria-pressed={siteMode === '2d'} onClick={() => setSiteMode('2d')}>2D plan</button>
+              </div>
+            )}
             <button className="btn" onClick={autoArrange}>Auto-arrange</button>
             <SelInfo view={view} calib={calib} sel={sel} lay={lay} st={st}
               onCancelCalib={() => setCalib(null)} onApplyCalib={applyCalib}
@@ -444,9 +475,18 @@ export default function App() {
             aria-label="Layout drawing. Select an item, then use arrow keys to nudge, R to rotate, Delete to remove."
             onDragOver={(e) => e.preventDefault()}
             onDrop={(e) => { const f = e.dataTransfer && e.dataTransfer.files[0]; if (f && f.type.startsWith('image/')) { e.preventDefault(); loadPhoto(f); } }}>
-            <PlanSvg st={st} lay={lay} tents={tentList} active={active} view={view} sel={sel} calib={view === 'site' ? calib : null} ph={ph} photoSrc={photoSrc}
-              svgRef={svgRef} dragging={dragging}
-              onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={endDrag} onPointerCancel={endDrag} />
+            {show3dMap ? (
+              <Suspense fallback={<p className="hint map3dload">Loading 3D map…</p>}>
+                <SiteMap3D tents={tentList} active={active} sel={sel} photo={model.photo} photoSrc={photoSrc}
+                  onPickTent={(i) => { if (i !== active) updateModel((n) => { n.active = i; }); setSel('__tent'); }}
+                  onMoveTent={(i, x, y) => updateModel((n) => { if (n.tents[i]) n.tents[i].tentPos = { x: snap(x), y: snap(y) }; })}
+                  onDeselect={() => setSel(null)} />
+              </Suspense>
+            ) : (
+              <PlanSvg st={st} lay={lay} tents={tentList} active={active} view={view} sel={sel} calib={view === 'site' ? calib : null} ph={ph} photoSrc={photoSrc}
+                svgRef={svgRef} dragging={dragging}
+                onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={endDrag} onPointerCancel={endDrag} />
+            )}
           </div>
           <TitleBlock st={st} lay={lay} view={view} tents={tentList} />
         </section>

@@ -1,4 +1,4 @@
-import { Fragment, useRef } from 'react';
+import { Fragment, useRef, useState } from 'react';
 import { SITES, TENTS, SEATING, ACC, DANCE, CHAIR_STYLES, LIGHT_STYLES } from '../lib/constants.js';
 import NumInput from './NumInput.jsx';
 import SavedLayouts from './SavedLayouts.jsx';
@@ -131,21 +131,32 @@ function AccList({ st, update }) {
 }
 
 export default function Rail({
-  st, lay, model, tents, active, sel, onSelect, update, ph, photoSrc, onPhotoFile, onCalib, onPhotoDel, onPhotoScale, onLoadLayout, onNewLayout,
+  st, lay, model, tents, active, sel, onSelect, update, ph, photoSrc, onPhotoFile, onSatellite, onCalib, onPhotoDel, onPhotoScale, onLoadLayout, onNewLayout,
   onPickTent, onAddTent, onDuplicateTent, onRemoveTent, onArrange, onAddTable, onResetTables,
 }) {
   const fileRef = useRef(null);
+  // satellite image from Mapbox: how wide an area to show, and how the last request went
+  const autoWidth = Math.round(Math.min(2000, Math.max(250, Math.max(st.siteL, st.siteW) * 1.5)) / 50) * 50;
+  const [mapW, setMapW] = useState('auto');
+  const [sat, setSat] = useState({ busy: false, msg: '', err: false });
+  const getSatellite = async () => {
+    if (sat.busy) return;
+    setSat({ busy: true, msg: 'Finding the address…', err: false });
+    try {
+      const at = await onSatellite(st.address, mapW === 'auto' ? autoWidth : +mapW);
+      setSat({ busy: false, msg: `Loaded the satellite view of ${at.label}.`, err: false });
+    } catch (e) { setSat({ busy: false, msg: e.message || 'Could not load the satellite image.', err: true }); }
+  };
   const set = (k) => (e) => { const v = e.target.value; update((n) => { n[k] = v; }); };
   const chk = (k) => (e) => { const c = e.target.checked; update((n) => { n[k] = c; }); };
   const S = SEATING[st.seating], mixed = S.kind === 'mixed';
   const seatOpts = mixed ? SEATING[st.mixRound].seats : S.seats;
   const nBanq = lay ? lay.units.filter((u) => u.type === 'banquet').length : 0, nRound = lay ? lay.units.length - nBanq : 0;
-  const mapHref = st.address ? `https://www.google.com/maps?q=${encodeURIComponent(st.address)}&t=k` : 'https://www.google.com/maps?t=k';
   const photoHint = !ph
-    ? 'Screenshot the satellite view, then upload it or paste it here (Ctrl+V). You will set the scale by clicking two points a known distance apart.'
+    ? 'Type the site address and click Get satellite image; the scale is set for you. Or upload a photo or paste one here (Ctrl+V) and set the scale by clicking two points a known distance apart.'
     : st.photo.calibrated
       ? `Scale set: 1 ft = ${(1 / st.photo.fpp).toFixed(1)} photo pixels. Drag the tent on the site plan to place it.`
-      : 'Scale is a rough guess. Click Set scale and mark two points you measured in Google Maps (right-click › Measure distance).';
+      : 'Scale is a rough guess. Click Set scale and mark two points a known distance apart (for example, a distance you paced out or measured).';
   const showLock = st.tentSize !== 'auto' && (Object.keys(st.pos).length > 0 || !!st.tables);
 
   return (
@@ -171,11 +182,19 @@ export default function Rail({
             {opt([['grass', 'Grass / lawn'], ['gravel', 'Gravel'], ['asphalt', 'Asphalt'], ['concrete', 'Concrete']])}
           </select>
         </label>
-        <label className="field"><span>Site address</span><input type="text" value={st.address || ''} onChange={set('address')} placeholder="Street, city, state" /></label>
-        <div className="btnrow"><a className="btn" target="_blank" rel="noopener noreferrer" href={mapHref}>Open satellite view in Google Maps</a></div>
-        <div className="field"><span>Satellite photo of the site</span>
+        <label className="field"><span>Site address</span><input type="text" value={st.address || ''} onChange={set('address')} placeholder="Street, city, state"
+          onKeyDown={(e) => { if (e.key === 'Enter') getSatellite(); }} /></label>
+        <div className="btnrow">
+          <button className="btn primary" disabled={sat.busy || !(st.address || '').trim()} onClick={getSatellite}>{sat.busy ? 'Loading…' : 'Get satellite image'}</button>
+          <select aria-label="Satellite image width" style={{ flex: 1 }} value={mapW} onChange={(e) => setMapW(e.target.value)}>
+            <option value="auto">Auto: {autoWidth} ft wide</option>
+            {[150, 250, 400, 600, 1000, 1500].map((w) => <option key={w} value={w}>{w} ft wide</option>)}
+          </select>
+        </div>
+        {sat.msg && <p className={'hint' + (sat.err ? ' err' : '')} role="status">{sat.msg}</p>}
+        <div className="field"><span>Site photo</span>
           <div className="btnrow">
-            <button className="btn" onClick={() => fileRef.current.click()}>Upload screenshot</button>
+            <button className="btn" onClick={() => fileRef.current.click()}>Upload photo</button>
             <input type="file" ref={fileRef} accept="image/*" hidden onChange={(e) => { onPhotoFile(e.target.files && e.target.files[0]); e.target.value = ''; }} />
             <button className="btn" disabled={!ph} onClick={onCalib}>Set scale</button>
             <button className="btn danger" disabled={!ph} onClick={onPhotoDel}>Remove</button>

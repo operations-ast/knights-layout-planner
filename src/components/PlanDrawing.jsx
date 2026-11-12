@@ -2,6 +2,7 @@
 import { r2, clamp, ft, danceFinish, climateCount, siteExtent, tentOrigin } from '../lib/planner.js';
 import { outlinePath, wallRuns, yTop } from '../lib/shape.js';
 import { LIGHT_INSET, BANQUET_SEATS, SEATING } from '../lib/constants.js';
+import { MAPBOX_ATTRIBUTION } from '../lib/mapbox.js';
 
 function AccShape({ id, w, h, chairs, st, interactive, sel }) {
   const out = []; let k = 0; const K = () => k++;
@@ -276,7 +277,7 @@ export default function PlanSvg({ st, lay, tents, active = 0, view, sel, calib, 
         <DimLines x0={0} y0={0} len={SW} horiz={false} off={fs * 1.6} fs={fs} label={ft(SW)} />
       </>)}
       <ScaleBar x={0} y={SW + fs * 1.2} maxLen={SL} fs={fs} />
-      {ph && <text className="attr" x={SL - fs * 0.5} y={SW - fs * 0.5} fontSize={fs * 0.6}>Imagery: Google{st.photo.calibrated ? '' : ' · scale not set'}</text>}
+      {ph && <text className="attr" x={SL - fs * 0.5} y={SW - fs * 0.5} fontSize={fs * 0.6}>{st.photo.source === 'mapbox' ? MAPBOX_ATTRIBUTION : 'Imagery: site photo'}{st.photo.calibrated ? '' : ' · scale not set'}</text>}
       {calib && (<>
         {calib.pts.length === 2 && <line className="calib" x1={calib.pts[0].x} y1={calib.pts[0].y} x2={calib.pts[1].x} y2={calib.pts[1].y} />}
         {calib.pts.map((q, i) => <circle key={i} className="calibpt" cx={q.x} cy={q.y} r={fs * 0.35} />)}
