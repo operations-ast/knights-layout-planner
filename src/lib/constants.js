@@ -8,7 +8,7 @@ export const SITES = {
 };
 
 export const TENTS = {
-  frame: { label: 'Frame tent', stake: 3, sizes: [[20, 20], [20, 30], [20, 40], [30, 30], [30, 45], [30, 60], [40, 40], [40, 60], [40, 80], [40, 100], [40, 120]] },
+  frame: { label: 'Frame tent', stake: 3, sizes: [[10, 10], [10, 20], [10, 30], [10, 40], [15, 15], [20, 20], [20, 30], [20, 40], [20, 60], [30, 30], [30, 45], [30, 60], [40, 40], [40, 60], [40, 80], [40, 100], [40, 120]] },
   cleartop: { label: 'Clear-top frame tent', stake: 3, sizes: [[20, 20], [20, 40], [30, 30], [30, 45], [30, 60], [40, 40], [40, 60], [40, 80]] },
   pole: { label: 'High-peak pole tent', stake: 6, sizes: [[30, 45], [40, 60], [40, 80], [40, 100], [60, 60], [60, 90], [60, 120], [80, 120]] },
   // Knights sailcloth line (knightspartyrental.com › Tents › Sailcloth Tent Rental), width × length.
@@ -75,7 +75,7 @@ export const CHAIR_STYLES = ['White folding', 'Chiavari', 'Cross-back', 'Padded 
 export const DEFAULT = {
   siteName: 'Example: Hartwell wedding reception', sitePreset: 'church', siteL: 160, siteW: 120, surface: 'grass',
   guests: 150, seating: 'rounds60', seatsPer: 8, mixRound: 'rounds60', mixBanquet: 4, spacing: 'comfortable', chairStyle: 'Chiavari',
-  name: 'Tent 1', tentType: 'frame', tentSize: 'auto', walls: 'window',
+  name: 'Tent 1', tentType: 'frame', tentSize: 'auto', tentCustom: false, walls: 'window',
   acc: {
     stage: { on: false, size: '12×8', cl: 12, cw: 8 },
     head: { on: true, size: 'Head table · 8' },

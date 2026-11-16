@@ -22,7 +22,10 @@ export function mergeState(s) {
   if (n.mixRound !== 'rounds60' && n.mixRound !== 'rounds72') n.mixRound = 'rounds60';
   if (!TENTS[n.tentType]) n.tentType = 'frame';
   // sizes can change when the rental catalog changes; fall back to auto
-  if (n.tentSize !== 'auto' && !TENTS[n.tentType].sizes.some(([w, l]) => `${w}x${l}` === n.tentSize)) { n.tentSize = 'auto'; n.pos = {}; n.tables = null; }
+  // a custom size (any W x L) is kept for straight-sided tents; the oval sailcloth only comes in its catalog sizes
+  const customOk = n.tentCustom && !TENTS[n.tentType].shape && /^\d+(\.\d+)?x\d+(\.\d+)?$/.test(n.tentSize);
+  if (!customOk) n.tentCustom = false;
+  if (n.tentSize !== 'auto' && !customOk && !TENTS[n.tentType].sizes.some(([w, l]) => `${w}x${l}` === n.tentSize)) { n.tentSize = 'auto'; n.pos = {}; n.tables = null; }
   delete n.photoSrc;
   return n;
 }

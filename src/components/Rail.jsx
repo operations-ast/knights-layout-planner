@@ -157,6 +157,9 @@ export default function Rail({
     : st.photo.calibrated
       ? `Scale set: 1 ft = ${(1 / st.photo.fpp).toFixed(1)} photo pixels. Drag the tent on the site plan to place it.`
       : 'Scale is a rough guess. Click Set scale and mark two points a known distance apart (for example, a distance you paced out or measured).';
+  const customSize = !!st.tentCustom && st.tentSize !== 'auto' && !TENTS[st.tentType].shape;
+  const [tentW, tentL] = st.tentSize === 'auto' ? [lay ? lay.W : 20, lay ? lay.L : 20] : st.tentSize.split('x').map(Number);
+  const setTentSize = (w, l) => update((n) => { n.tentCustom = true; n.tentSize = `${w}x${l}`; });
   const showLock = st.tentSize !== 'auto' && (Object.keys(st.pos).length > 0 || !!st.tables);
 
   return (
@@ -284,15 +287,30 @@ export default function Rail({
       <section>
         <h2>Tent{tents.length > 1 ? ` · ${st.name}` : ''}</h2>
         <label className="field"><span>Tent style</span>
-          <select value={st.tentType} onChange={(e) => { const v = e.target.value; update((n) => { n.tentType = v; n.tentSize = 'auto'; n.pos = {}; }); }}>
+          <select value={st.tentType} onChange={(e) => { const v = e.target.value; update((n) => { n.tentType = v; n.tentSize = 'auto'; n.tentCustom = false; n.pos = {}; }); }}>
             {opt(Object.entries(TENTS).map(([k, v]) => [k, v.label]))}
           </select>
         </label>
         <label className="field"><span>Size</span>
-          <select value={st.tentSize} onChange={set('tentSize')}>
-            {opt([['auto', 'Auto (smallest that fits)'], ...TENTS[st.tentType].sizes.map(([w, l]) => [`${w}x${l}`, `${w}' × ${l}'`])])}
+          <select value={customSize ? 'custom' : st.tentSize} onChange={(e) => {
+            const v = e.target.value;
+            update((n) => {
+              if (v === 'custom') { n.tentCustom = true; if (n.tentSize === 'auto' && lay) n.tentSize = `${lay.W}x${lay.L}`; }
+              else { n.tentCustom = false; n.tentSize = v; }
+            });
+          }}>
+            {opt([['auto', 'Auto (smallest that fits)'], ...TENTS[st.tentType].sizes.map(([w, l]) => [`${w}x${l}`, `${w}' × ${l}'`]),
+              ...(TENTS[st.tentType].shape ? [] : [['custom', 'Custom size…']])])}
           </select>
         </label>
+        {customSize && (
+          <div className="row2">
+            <label className="field"><span>Width (ft)</span>
+              <NumInput min={10} max={200} step={5} value={tentW} valid={(v) => v >= 10} onValue={(v) => setTentSize(Math.min(200, v), tentL)} /></label>
+            <label className="field"><span>Length (ft)</span>
+              <NumInput min={10} max={400} step={5} value={tentL} valid={(v) => v >= 10} onValue={(v) => setTentSize(tentW, Math.min(400, v))} /></label>
+          </div>
+        )}
         <label className="field"><span>Sidewalls</span>
           <select value={st.walls} onChange={set('walls')}>
             {opt([['none', 'None (open sides)'], ['solid', 'Solid white'], ['window', 'Cathedral window'], ['clear', 'Clear']])}
