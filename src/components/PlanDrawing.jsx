@@ -3,6 +3,50 @@ import { r2, clamp, ft, danceFinish, climateCount, siteExtent, tentOrigin } from
 import { outlinePath, wallRuns, yTop } from '../lib/shape.js';
 import { LIGHT_INSET, BANQUET_SEATS, SEATING } from '../lib/constants.js';
 import { MAPBOX_ATTRIBUTION } from '../lib/mapbox.js';
+import { siteDef, localPoly } from '../lib/siteItems.js';
+
+/** One outdoor item on the site plan, drawn to scale and turned; data-site makes it draggable. */
+function SiteItem({ it, i, sel, fs }) {
+  const d = siteDef(it), { l, w } = it, isSel = sel === 's:' + i;
+  const tr = `translate(${r2(it.x)} ${r2(it.y)}) rotate(${it.rot || 0}) translate(${r2(-l / 2)} ${r2(-w / 2)})`;
+  const ts = Math.min(fs * 0.75, w * 0.55, l / Math.max(3, (d.short || '').length) * 1.6);
+  const out = [];
+  let sign = 0; // size of the "P" sign drawn in the middle of a parking area
+  if (d.parking) {
+    // a dark edge under a bright white border keeps the lot visible over any satellite photo
+    out.push(<rect key="h" className="parkhalo" width={l} height={w} />, <rect key="b" className="sitem park" width={l} height={w} />);
+    // stall lines: two rows of 9' stalls facing a centre aisle
+    if (w >= 30) for (let x = 9; x < l - 0.1; x += 9) out.push(<line key={'a' + x} className="stall" x1={x} y1={0} x2={x} y2={18} />, <line key={'b' + x} className="stall" x1={x} y1={w - 18} x2={x} y2={w} />);
+    sign = Math.min(fs * 2.4, l * 0.5, w * 0.5);
+    if (sign > 1) out.push(<g key="p" className="parksign">
+      <rect x={l / 2 - sign / 2} y={w / 2 - sign / 2} width={sign} height={sign} rx={sign * 0.16} />
+      <text x={l / 2} y={w / 2 + sign * 0.04} fontSize={sign * 0.78}>P</text>
+    </g>);
+  } else if (d.flat) out.push(<rect key="b" className="sitem flat" width={l} height={w} style={{ fill: d.color }} />);
+  else if (it.type === 'stage') {
+    // stage outline in its chosen shape; the small arrow marks the front, facing the audience
+    out.push(<polygon key="b" className="sitem" points={localPoly(it).map(([x, y]) => `${r2(x)},${r2(y)}`).join(' ')} style={{ fill: d.color }} />,
+      <path key="f" className="stagefront" d={`M${r2(l / 2 - 2)} ${r2(w + 1)} L${r2(l / 2 + 2)} ${r2(w + 1)} L${r2(l / 2)} ${r2(w + 3)} Z`} />);
+  } else {
+    out.push(<rect key="b" className="sitem" width={l} height={w} rx={Math.min(l, w) * 0.08} style={{ fill: d.color }} />);
+    if (it.type === 'foodtruck') out.push(<rect key="c" className="cab" x={l - 6} y={0.6} width={5.4} height={w - 1.2} rx={1} />);
+    if (it.type === 'vehicle') out.push(<rect key="c" className="cab" x={l * 0.3} y={0.8} width={l * 0.4} height={w - 1.6} rx={1.2} />);
+    if (d.unit) for (let x = d.unit; x < l - 0.1; x += d.unit) out.push(<line key={'u' + x} className="unitln" x1={x} y1={0} x2={x} y2={w} />);
+    if (d.cross) out.push(<rect key="x1" className="cross" x={l / 2 - 2} y={w / 2 - 0.6} width={4} height={1.2} />, <rect key="x2" className="cross" x={l / 2 - 0.6} y={w / 2 - 2} width={1.2} height={4} />);
+  }
+  return (
+    <g className={'siteitem' + (isSel ? ' sel' : '')} data-site={i} transform={tr}>
+      {out}
+      {isSel && <rect className="selbox" x={-1} y={-1} width={l + 2} height={w + 2} />}
+      {sign > 1 && w / 2 + sign / 2 + ts * 1.3 < w && (
+        <text className="sitemt" x={l / 2} y={w / 2 + sign / 2 + ts * 0.75} fontSize={ts}>{d.short}</text>
+      )}
+      {d.short && !d.cross && !(sign > 1) && ts > 0.5 && (
+        <text className="sitemt" x={l / 2} y={it.type === 'stage' && it.shape === 'thrust' ? w * 0.3 : w / 2} fontSize={ts} transform={w > l * 1.4 ? `rotate(-90 ${l / 2} ${w / 2})` : undefined}>{d.short}</text>
+      )}
+    </g>
+  );
+}
 
 function AccShape({ id, w, h, chairs, st, interactive, sel }) {
   const out = []; let k = 0; const K = () => k++;
@@ -40,6 +84,17 @@ function AccShape({ id, w, h, chairs, st, interactive, sel }) {
     out.push(<rect key={K()} className="tbl" x={1} y={1.2} width={w - 2} height={2.5} />);
   } else if (id === 'photo') {
     out.push(<rect key={K()} className="zone" width={w} height={h} />, <rect key={K()} className="stage" x={1} y={0.4} width={w - 2} height={0.7} />, <rect key={K()} className="stage" x={w / 2 - 0.6} y={h - 2.2} width={1.2} height={1.2} />);
+  } else if (id === 'booth') {
+    // canopy outline with its peak lines, table across the front
+    out.push(<rect key={K()} className="zone" width={w} height={h} />, <line key={K()} className="deck" x1={0} y1={0} x2={w} y2={h} />, <line key={K()} className="deck" x1={w} y1={0} x2={0} y2={h} />,
+      <rect key={K()} className="tbl" x={2} y={h - 3} width={w - 4} height={2.5} />);
+  } else if (id === 'foh') {
+    out.push(<rect key={K()} className="stage" width={w} height={h} />, <rect key={K()} className="tbl" x={1} y={2} width={w - 2} height={2.5} />);
+  } else if (id === 'info' || id === 'merch') {
+    out.push(<rect key={K()} className="zone" width={w} height={h} />, <rect key={K()} className="tbl" x={1} y={1.2} width={w - 2} height={2.5} />);
+  } else if (id === 'firstaid') {
+    out.push(<rect key={K()} className="zone" width={w} height={h} />, <rect key={K()} className="tbl" x={1.5} y={1.5} width={6.5} height={2.5} />,
+      <rect key={K()} className="cross" x={w / 2 - 1.5} y={h - 3} width={3} height={0.8} />, <rect key={K()} className="cross" x={w / 2 - 0.4} y={h - 4.1} width={0.8} height={3} />);
   } else if (id === 'lounge') {
     out.push(<rect key={K()} className="zone" width={w} height={h} />, <rect key={K()} className="sofa" x={2} y={0.6} width={w - 4} height={2.6} rx={0.6} />,
       <rect key={K()} className="sofa" x={1} y={5.6} width={2.6} height={2.6} rx={0.5} />, <rect key={K()} className="sofa" x={w - 3.6} y={5.6} width={2.6} height={2.6} rx={0.5} />,
@@ -271,7 +326,9 @@ export default function PlanSvg({ st, lay, tents, active = 0, view, sel, calib, 
         </>)}
         <rect className="siteline" x={0} y={0} width={SL} height={SW} />
       </>)}
+      {(st.siteItems || []).filter((it) => siteDef(it).h === 0).map((it) => <SiteItem key={'f' + (st.siteItems.indexOf(it))} it={it} i={st.siteItems.indexOf(it)} sel={sel} fs={fs} />)}
       {all.map((t, i) => <SiteTent key={i} t={t} i={i} active={active} sel={sel} ph={ph} fs={fs} multi={multi} />)}
+      {(st.siteItems || []).map((it, i) => (siteDef(it).h === 0 ? null : <SiteItem key={i} it={it} i={i} sel={sel} fs={fs} />))}
       {!ph && (<>
         <DimLines x0={0} y0={0} len={SL} horiz off={fs * 1.6} fs={fs} label={`SITE ${ft(SL)}`} />
         <DimLines x0={0} y0={0} len={SW} horiz={false} off={fs * 1.6} fs={fs} label={ft(SW)} />

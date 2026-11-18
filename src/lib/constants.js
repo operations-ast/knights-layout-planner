@@ -1,4 +1,7 @@
-export const SITES = {
+import { isFestival } from '../edition.js';
+
+// Each table below has a wedding (Knights) and a festival (American Structure Tent) version; see src/edition.js.
+const WEDDING_SITES = {
   backyard: { label: 'Backyard', l: 100, w: 70, surface: 'grass' },
   church: { label: 'Church or school lawn', l: 160, w: 120, surface: 'grass' },
   park: { label: 'Park or open field', l: 250, w: 180, surface: 'grass' },
@@ -6,6 +9,15 @@ export const SITES = {
   patio: { label: 'Venue patio', l: 90, w: 60, surface: 'concrete' },
   custom: { label: 'Custom size' },
 };
+const FESTIVAL_SITES = {
+  fairgrounds: { label: 'Fairgrounds', l: 600, w: 400, surface: 'grass' },
+  park: { label: 'Park or open field', l: 400, w: 300, surface: 'grass' },
+  athletic: { label: 'Athletic field', l: 360, w: 160, surface: 'grass' },
+  lot: { label: 'Parking lot', l: 400, w: 200, surface: 'asphalt' },
+  street: { label: 'Downtown street closure', l: 600, w: 70, surface: 'asphalt' },
+  custom: { label: 'Custom size' },
+};
+export const SITES = isFestival ? FESTIVAL_SITES : WEDDING_SITES;
 
 export const TENTS = {
   frame: { label: 'Frame tent', stake: 3, sizes: [[10, 10], [10, 20], [10, 30], [10, 40], [15, 15], [20, 20], [20, 30], [20, 40], [20, 60], [30, 30], [30, 45], [30, 60], [40, 40], [40, 60], [40, 80], [40, 100], [40, 120]] },
@@ -23,8 +35,8 @@ export const SEATING = {
   rounds72: { label: '72" round tables', kind: 'round', r: 3, seats: [10, 12], def: 10, cx: 11.5, cy: 11.5, hx: 4.75, hy: 4.75, table: '72" round table', linen: '132" round, floor length', sqft: '11–13' },
   banquet: { label: "8' banquet rows", kind: 'banquet', seats: [8], def: 8, cx: 8, cy: 7.5, hx: 4, hy: 3, table: "8' × 30\" banquet table", linen: '90" × 156" banquet, floor length', sqft: '8–10' },
   mixed: { label: 'Mixed rounds + banquet tables', kind: 'mixed', seats: [8, 10], def: 8, cx: 10, cy: 10, hx: 4.25, hy: 4.25, sqft: '9–12' },
-  theater: { label: 'Ceremony rows (chairs only)', kind: 'chair', seats: [1], def: 1, cx: 3, cy: 2, hx: 0.8, hy: 0.8, sqft: '6–8' },
-  none: { label: 'No seating (standing / cocktail)', kind: 'none', seats: [0], def: 0, cx: 10, cy: 10, hx: 0, hy: 0, sqft: '6–8' },
+  theater: { label: isFestival ? 'Theater rows (chairs only)' : 'Ceremony rows (chairs only)', kind: 'chair', seats: [1], def: 1, cx: 3, cy: 2, hx: 0.8, hy: 0.8, sqft: '6–8' },
+  none: { label: isFestival ? 'No seating (general admission)' : 'No seating (standing / cocktail)', kind: 'none', seats: [0], def: 0, cx: 10, cy: 10, hx: 0, hy: 0, sqft: '6–8' },
 };
 // most chairs that fit around one table when adding chairs by hand
 export const MAX_SEATS = { rounds60: 10, rounds72: 12, banquet: 8 };
@@ -33,7 +45,7 @@ export const TABLE_TYPES = { rounds60: '60" round', rounds72: '72" round', banqu
 // standing room per guest for a no-seating (cocktail) tent; auto tent size keeps at least this much
 export const STANDING_SQFT = 6;
 
-export const ACC = [
+const WEDDING_ACC = [
   { id: 'stage', label: 'Stage', short: 'STAGE', sizes: { '8×8': [8, 8], '12×8': [12, 8], '16×12': [16, 12], '24×16': [24, 16] }, def: '12×8', walls: ['left', 'top'], f: 0.5 },
   { id: 'head', label: 'Head table', short: 'HEAD TABLE', sizes: { 'Sweetheart · 2': [6, 5, 2], 'Head table · 8': [16, 6, 8], 'Head table · 12': [24, 6, 12], 'Head table · 16': [32, 6, 16] }, def: 'Head table · 8', walls: ['left', 'top'], f: 0.5 },
   { id: 'dance', label: 'Dance floor', short: 'DANCE FLOOR', dance: true },
@@ -46,6 +58,22 @@ export const ACC = [
   { id: 'lounge', label: 'Lounge seating', short: 'LOUNGE', dims: [14, 10], walls: ['top', 'bottom'], f: 1 },
   { id: 'highboy', label: 'Cocktail tables', short: '', dims: [5, 5], qty: true, qtyOpts: [2, 4, 6, 8, 10, 12, 16, 20], free: true, walls: ['bottom'], f: 1 },
 ];
+// festival floor items: the shared ids (stage, dance, buffet, bar, photo, lounge, highboy) keep their drawings and rental lines
+const FESTIVAL_ACC = [
+  { id: 'stage', label: 'Stage', short: 'STAGE', sizes: { '16×12': [16, 12], '20×16': [20, 16], '24×16': [24, 16], '32×24': [32, 24], '40×24': [40, 24] }, def: '24×16', walls: ['left', 'top'], f: 0.5 },
+  { id: 'foh', label: 'Sound booth (FOH)', short: 'FOH', dims: [8, 8], walls: ['right', 'bottom', 'top'], f: 0.5 },
+  { id: 'dance', label: 'Dance floor', short: 'DANCE FLOOR', dance: true },
+  { id: 'booth', label: 'Vendor booths (10×10)', short: 'VENDOR', dims: [10, 10], qty: true, qtyOpts: [2, 4, 6, 8, 10, 12, 16, 20, 24, 30], walls: ['top', 'bottom', 'right'], f: 0.5 },
+  { id: 'buffet', label: 'Food service line', short: 'FOOD', dims: [16, 9], qty: true, walls: ['right', 'top', 'bottom'], f: 0.5 },
+  { id: 'bar', label: 'Beer & wine bar', short: 'BAR', dims: [10, 6], qty: true, qtyOpts: [1, 2, 3, 4, 6, 8], walls: ['bottom', 'top'], f: 1 },
+  { id: 'info', label: 'Ticket & info table', short: 'INFO', dims: [8, 5], walls: ['bottom', 'top'], f: 0.12 },
+  { id: 'merch', label: 'Merch table', short: 'MERCH', dims: [12, 6], walls: ['bottom', 'top'], f: 0.75 },
+  { id: 'firstaid', label: 'First aid station', short: 'FIRST AID', dims: [10, 10], walls: ['right', 'top', 'bottom'], f: 0.9 },
+  { id: 'photo', label: 'Photo op wall', short: 'PHOTO', dims: [10, 10], walls: ['bottom', 'top'], f: 0.3 },
+  { id: 'lounge', label: 'VIP lounge', short: 'VIP', dims: [14, 10], walls: ['top', 'bottom'], f: 1 },
+  { id: 'highboy', label: 'Cocktail tables', short: '', dims: [5, 5], qty: true, qtyOpts: [2, 4, 6, 8, 10, 12, 16, 20, 30, 40], free: true, walls: ['bottom'], f: 1 },
+];
+export const ACC = isFestival ? FESTIVAL_ACC : WEDDING_ACC;
 
 export const WALLROT = { top: 0, right: 90, bottom: 180, left: 270 };
 export const G = 1.5;
@@ -72,7 +100,7 @@ export const BANQUET_SEATS = [-3, -1, 1, 3].flatMap((dx) => [[dx, -1], [dx, 1]])
 
 export const CHAIR_STYLES = ['White folding', 'Chiavari', 'Cross-back', 'Padded banquet'];
 
-export const DEFAULT = {
+const WEDDING_DEFAULT = {
   siteName: 'Example: Hartwell wedding reception', sitePreset: 'church', siteL: 160, siteW: 120, surface: 'grass',
   guests: 150, seating: 'rounds60', seatsPer: 8, mixRound: 'rounds60', mixBanquet: 4, spacing: 'comfortable', chairStyle: 'Chiavari',
   name: 'Tent 1', tentType: 'frame', tentSize: 'auto', tentCustom: false, walls: 'window',
@@ -88,4 +116,21 @@ export const DEFAULT = {
   chandList: null, // null = automatic (one per 20' bay on the centerline); otherwise [{ fx, fy }] as fractions of L and W
   exits: null, // null = automatic from guest count; otherwise [{ side, f, kind: 'entrance' | 'exit' }]
   pos: {}, tentPos: null, tables: null, address: '', photo: null, tentAngle: 0,
+  siteItems: [], // outdoor items on the site plan (festival planner); see lib/siteItems.js
 };
+const FESTIVAL_DEFAULT = {
+  ...WEDDING_DEFAULT,
+  siteName: 'Example: Riverfront Music Festival', sitePreset: 'park', siteL: 400, siteW: 300, surface: 'grass',
+  guests: 400, seating: 'banquet', seatsPer: 8, chairStyle: 'White folding',
+  tentType: 'structure', walls: 'none',
+  acc: {
+    stage: { on: true, size: '24×16', cl: 24, cw: 16 },
+    foh: { on: true },
+    dance: { on: false, size: 'auto', cl: 20, cw: 20, finish: 'black', wrap: false },
+    booth: { on: true, qty: '6' }, buffet: { on: false, qty: 'auto' }, bar: { on: true, qty: 'auto' },
+    info: { on: true }, merch: { on: true }, firstaid: { on: false }, photo: { on: false }, lounge: { on: false },
+    highboy: { on: true, qty: 'auto' },
+  },
+  stringLights: true, lightStyle: 'perimeter', chandeliers: false, uplights: false, generator: true,
+};
+export const DEFAULT = isFestival ? FESTIVAL_DEFAULT : WEDDING_DEFAULT;

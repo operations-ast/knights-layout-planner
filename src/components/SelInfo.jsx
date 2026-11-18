@@ -2,6 +2,8 @@ import { useRef } from 'react';
 import { SIDE_LABELS, KIND_LABELS } from './ExitsEditor.jsx';
 import { MAX_SEATS, TABLE_TYPES } from '../lib/constants.js';
 import { headCap } from '../lib/planner.js';
+import { siteDef, siteName, itemSize, STAGE_SHAPES } from '../lib/siteItems.js';
+import NumInput from './NumInput.jsx';
 
 /** Seat count, add and reset buttons for the head table (shown with the table or one of its chairs selected). */
 function HeadSeatCtl({ item, onAddHeadSeat, onResetHeadSeats }) {
@@ -27,7 +29,7 @@ function RotCtl({ angle, selKey, onRotate, onSetAngle }) {
   </>);
 }
 
-export default function SelInfo({ view, calib, sel, lay, st, onCancelCalib, onApplyCalib, onRotate, onSetAngle, onRemove, onReflow, onExitKind, onRemoveExit, onAddExit, onRemoveChand, onAddChand, onSeats, onTableType, onAddTable, onRemoveTable, onAddHeadSeat, onRemoveHeadSeat, onResetHeadSeats }) {
+export default function SelInfo({ view, calib, sel, lay, st, siteItem, siteIdx, onSiteEdit, onSiteDuplicate, onSiteRemove, onCancelCalib, onApplyCalib, onRotate, onSetAngle, onRemove, onReflow, onExitKind, onRemoveExit, onAddExit, onRemoveChand, onAddChand, onSeats, onTableType, onAddTable, onRemoveTable, onAddHeadSeat, onRemoveHeadSeat, onResetHeadSeats }) {
   const ftRef = useRef(null);
   let body;
   if (view === 'site' && calib) {
@@ -41,6 +43,24 @@ export default function SelInfo({ view, calib, sel, lay, st, onCancelCalib, onAp
       </label>
       <button className="btn primary" onClick={() => onApplyCalib(parseFloat(ftRef.current && ftRef.current.value))}>Apply scale</button>
       <button className="btn" onClick={onCancelCalib}>Cancel</button>
+    </>);
+  } else if (view === 'site' && siteItem) {
+    const d = siteDef(siteItem);
+    body = (<>
+      <span className="sw" style={{ background: d.color }} aria-hidden="true" />
+      <input className="sitename" aria-label="Item name" value={siteItem.name ?? siteName(st.siteItems || [siteItem], st.siteItems ? siteIdx : 0)} onChange={(e) => { const v = e.target.value; onSiteEdit((it) => { it.name = v; }); }} />
+      <label className="field inline"><span>L</span><NumInput min={2} max={1000} aria-label="Length (ft)" value={Math.round(siteItem.l * 10) / 10} valid={(n) => n >= 2} onValue={(v) => onSiteEdit((it) => { it.l = Math.min(1000, v); })} /></label>
+      <span className="x">×</span>
+      <label className="field inline"><span>W</span><NumInput min={2} max={1000} aria-label="Width (ft)" value={Math.round(siteItem.w * 10) / 10} valid={(n) => n >= 2} onValue={(v) => onSiteEdit((it) => { it.w = Math.min(1000, v); })} /></label>
+      <span className="hint">ft · {siteItem.type === 'stage' ? itemSize(siteItem).split(' · ').pop() : itemSize(siteItem).split(' · ').slice(1).join(' · ') || 'drag to move'}</span>
+      {siteItem.type === 'stage' && (
+        <select aria-label="Stage shape" value={siteItem.shape || 'rect'} style={{ width: 'auto' }} onChange={(e) => { const v = e.target.value; onSiteEdit((it) => { it.shape = v; }); }}>
+          {Object.entries(STAGE_SHAPES).map(([k, t]) => <option key={k} value={k}>{t}</option>)}
+        </select>
+      )}
+      <RotCtl angle={siteItem.rot || 0} selKey={sel} onRotate={onRotate} onSetAngle={onSetAngle} />
+      <button className="btn" onClick={onSiteDuplicate}>Duplicate</button>
+      <button className="btn danger" onClick={onSiteRemove}>Remove</button>
     </>);
   } else if (view === 'site' && sel === '__tent') {
     body = <><span className="name">Tent</span><RotCtl angle={st.tentAngle || 0} selKey={sel} onRotate={onRotate} onSetAngle={onSetAngle} /></>;
@@ -104,7 +124,7 @@ export default function SelInfo({ view, calib, sel, lay, st, onCancelCalib, onAp
       </>);
     } else {
       body = view === 'site'
-        ? <span className="hint">Drag the tent to place it on the site.</span>
+        ? <span className="hint">Drag a tent or outdoor item to place it on the site.</span>
         : <><span className="hint">Drag any item, table, exit or chandelier to move it.</span><button className="btn" onClick={onAddExit}>+ Add exit</button></>;
     }
   }

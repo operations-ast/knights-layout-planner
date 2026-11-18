@@ -1,6 +1,8 @@
 // Rental list and code/fit checks derived from the solved layout.
 import { LIGHT_INSET, STANDING_SQFT, SEATING } from './constants.js';
 import { perimeter } from './shape.js';
+import { EDITION, isFestival } from '../edition.js';
+import { siteRentals } from './siteItems.js';
 import { danceFinish, danceNeed, szDims, climateCount, siteFits, tentOrigin, halfExt, exitCount } from './planner.js';
 
 export function rentals(st, l) {
@@ -35,20 +37,26 @@ export function rentals(st, l) {
   for (const i of cnt('dance')) {
     const F = danceFinish(st), s = st.acc.dance, std = F.sizes.some((z) => szDims(z).join() === i.dims.join());
     const rounded = s.size === 'custom' && ((s.cl || 20) % 4 || (s.cw || 20) % 4);
-    floor.push([`${F.label} dance floor, ${i.dims[0]}' × ${i.dims[1]}'`, 1, `${F.desc} · ${(i.dims[0] / 4) * (i.dims[1] / 4)} sections (4' × 4')${rounded ? ' · rounded up to whole sections' : ''}${std ? '' : `; custom size, confirm with Knights (stock sizes: ${F.sizes.map((z) => z.replace('x', '×')).join(', ')})`}`]);
+    floor.push([`${F.label} dance floor, ${i.dims[0]}' × ${i.dims[1]}'`, 1, `${F.desc} · ${(i.dims[0] / 4) * (i.dims[1] / 4)} sections (4' × 4')${rounded ? ' · rounded up to whole sections' : ''}${std ? '' : `; custom size, confirm with ${EDITION.company.split(' ')[0]} (stock sizes: ${F.sizes.map((z) => z.replace('x', '×')).join(', ')})`}`]);
     if (s.wrap) floor.push(['Dance floor vinyl wrap', 1, 'Custom graphic, full or partial coverage']);
   }
   for (const i of cnt('stage')) floor.push([`Stage ${i.dims[0]}' × ${i.dims[1]}'`, Math.ceil(i.dims[0] * i.dims[1] / 32), `4' × 8' decks${i.dims[0] % 4 || i.dims[1] % 4 ? ' (size rounds up to full decks)' : ''} · ${i.dims[0] + 2 * i.dims[1]} lin ft skirting · steps`]);
   for (const i of cnt('head')) floor.push(i.sweet
     ? [`Sweetheart table${i.seats !== 2 ? `, ${i.seats} seat${i.seats === 1 ? '' : 's'}` : ''}`, 1, 'With linen']
     : [`Head table, ${i.seats} seat${i.seats === 1 ? '' : 's'}`, Math.ceil(i.dims[0] / 8), `8' banquet tables (${i.dims[0]}' long), linens and skirting`]);
-  if (cnt('buffet').length) floor.push(["8' banquet tables for buffet", cnt('buffet').length * 2, `${cnt('buffet').length} double-sided line${cnt('buffet').length > 1 ? 's' : ''}, linens`]);
-  if (cnt('bar').length) floor.push(['Bar with back bar', cnt('bar').length, 'About 1 bar per 150 guests']);
+  if (cnt('booth').length) floor.push(["Vendor booth, 10' × 10' pop-up canopy", cnt('booth').length, "With weights, one 6' table and 2 chairs each"]);
+  if (isFestival && cnt('buffet').length) floor.push(["8' tables for food service", cnt('buffet').length * 2, `${cnt('buffet').length} serving line${cnt('buffet').length > 1 ? 's' : ''}, hand-wash station nearby`]);
+  else if (cnt('buffet').length) floor.push(["8' banquet tables for buffet", cnt('buffet').length * 2, `${cnt('buffet').length} double-sided line${cnt('buffet').length > 1 ? 's' : ''}, linens`]);
+  if (cnt('bar').length) floor.push([isFestival ? 'Beer & wine bar with back bar' : 'Bar with back bar', cnt('bar').length, isFestival ? 'About 1 bar per 150 attendees · ice and cooler space' : 'About 1 bar per 150 guests']);
+  if (cnt('foh').length) floor.push(['Sound booth (FOH) riser', 1, "8' × 8' riser, cable ramps to the stage, power drop"]);
+  if (cnt('info').length) floor.push(["Ticket & info table, 8'", 1, 'Near the entrance, with 2 chairs']);
+  if (cnt('merch').length) floor.push(["Merch tables, 6'", 2, 'With linens and a display rack']);
+  if (cnt('firstaid').length) floor.push(['First aid station', 1, "10' × 10' with cot, table and chairs"]);
   if (cnt('dj').length) floor.push(['DJ table', 1, "6' table, black linen, power drop"]);
   if (cnt('cake').length) floor.push(['Cake table, 48" round', 1, 'With linen']);
   if (cnt('gift').length) floor.push(["Gift & card table, 6'", 1, 'Near the entrance']);
-  if (cnt('photo').length) floor.push(['Photo booth area', 1, "10' × 10' with backdrop"]);
-  if (cnt('lounge').length) floor.push(['Lounge furniture set', 1, 'Sofa, 2 chairs, coffee table']);
+  if (cnt('photo').length) floor.push([isFestival ? 'Photo op wall' : 'Photo booth area', 1, "10' × 10' with backdrop"]);
+  if (cnt('lounge').length) floor.push([isFestival ? 'VIP lounge furniture set' : 'Lounge furniture set', 1, 'Sofa, 2 chairs, coffee table']);
   if (cnt('highboy').length) floor.push(['Cocktail tables, 30" highboy', cnt('highboy').length, '42" tall · 120" round cinched linens']);
   if (floor.length) { grp('Floor items'); floor.forEach((r) => add(...r)); }
   const lt = [];
@@ -76,7 +84,8 @@ export function rentals(st, l) {
 /** Rental rows for every tent; with more than one tent, each group heading is prefixed with the tent's name. */
 export function allRentals(tents) {
   const multi = tents.length > 1;
-  return tents.flatMap(({ st, lay }) => rentals(st, lay).map((r) => (r.grp && multi ? { ...r, grp: `${st.name} · ${r.grp}`, tent: true } : r)));
+  return [...tents.flatMap(({ st, lay }) => rentals(st, lay).map((r) => (r.grp && multi ? { ...r, grp: `${st.name} · ${r.grp}`, tent: true } : r))),
+    ...siteRentals(tents[0].st.siteItems)];
 }
 
 /** Plain-text rental list for the clipboard. tents: [{ st, lay }]. */

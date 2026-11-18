@@ -9,7 +9,7 @@
 import { DEFAULT } from './constants.js';
 import { clone, clamp, mergeState, solve, tentOrigin, halfExt, siteExtent } from './planner.js';
 
-export const SITE_KEYS = ['siteName', 'sitePreset', 'siteL', 'siteW', 'surface', 'address', 'photo'];
+export const SITE_KEYS = ['siteName', 'sitePreset', 'siteL', 'siteW', 'surface', 'address', 'photo', 'siteItems'];
 
 const pickSite = (o) => Object.fromEntries(SITE_KEYS.map((k) => [k, o[k]]));
 const pickTent = (o) => Object.fromEntries(Object.keys(o).filter((k) => !SITE_KEYS.includes(k) && k !== 'tents' && k !== 'active').map((k) => [k, o[k]]));
@@ -114,12 +114,12 @@ export function arrangeTents(m, ph) {
 
 /* ---------- tent-to-tent checks ---------- */
 // Stake/guy-line footprint of a tent on the site as a rotated rectangle (4 corners).
-function footprint(v, l, ph) {
+export function tentFootprint(v, l, ph) {
   const o = tentOrigin(v, l, ph), k = l.T.stake, cx = o.x + l.L / 2, cy = o.y + l.W / 2;
   const a = (v.tentAngle || 0) * Math.PI / 180, c = Math.cos(a), s = Math.sin(a), hl = l.L / 2 + k, hw = l.W / 2 + k;
   return [[-hl, -hw], [hl, -hw], [hl, hw], [-hl, hw]].map(([x, y]) => [cx + x * c - y * s, cy + x * s + y * c]);
 }
-function overlaps(A, B) { // separating axis test for convex polygons
+export function polysOverlap(A, B) { // separating axis test for convex polygons
   for (const P of [A, B]) for (let i = 0; i < P.length; i++) {
     const [x1, y1] = P[i], [x2, y2] = P[(i + 1) % P.length], nx = y2 - y1, ny = x1 - x2;
     const pa = A.map(([x, y]) => x * nx + y * ny), pb = B.map(([x, y]) => x * nx + y * ny);
@@ -141,10 +141,10 @@ function gapBetween(A, B) {
 export function siteNotes(views, lays, ph) {
   const out = [];
   if (views.length < 2) return out;
-  const fps = views.map((v, i) => footprint(v, lays[i], ph));
+  const fps = views.map((v, i) => tentFootprint(v, lays[i], ph));
   for (let i = 0; i < views.length; i++) for (let j = i + 1; j < views.length; j++) {
     const a = views[i].name, b = views[j].name;
-    if (overlaps(fps[i], fps[j])) out.push(['bad', `${a} and ${b} overlap on the site (including stake and guy line areas). Drag one apart on the site plan.`]);
+    if (polysOverlap(fps[i], fps[j])) out.push(['bad', `${a} and ${b} overlap on the site (including stake and guy line areas). Drag one apart on the site plan.`]);
     else {
       const g = gapBetween(fps[i], fps[j]);
       if (g < 20) out.push(['warn', `${a} and ${b} are ${Math.floor(g)}' apart between stake lines. The fire code generally asks for 20' between tents, with exceptions for smaller combined areas; confirm with the local fire marshal.`]);

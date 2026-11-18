@@ -200,3 +200,39 @@ tr.grp td{font-family:var(--f-display);font-weight:600;font-size:13px;letter-spa
 .sb1{fill:var(--ink)} .sb2{fill:var(--tent);stroke:var(--ink);stroke-width:1}
 .sbt{font-family:var(--f-mono);fill:var(--muted);text-anchor:middle}
 @media (prefers-reduced-motion:no-preference){.stat .v{transition:color .2s}}
+
+/* colour logo (festival edition): already recoloured for the dark header, so no invert */
+.logo.color{filter:none;mix-blend-mode:normal;height:64px}
+span.logo.color{display:inline-block;width:150px}
+.otherplanner{color:var(--accent,#6da7e6);white-space:nowrap}
+.cross{fill:#d64545}
+
+/* outdoor site items (festival planner) */
+.siteitem{cursor:grab}
+.dragging .siteitem{cursor:grabbing}
+.sitem{stroke:#11161c;stroke-width:.35;vector-effect:non-scaling-stroke}
+.sitem.flat{fill-opacity:.35;stroke:var(--ink,#e4e9ee);stroke-dasharray:4 3}
+.parkhalo{fill:none;stroke:#0b1016;stroke-width:5;stroke-opacity:.75;vector-effect:non-scaling-stroke;pointer-events:none}
+.sitem.park{fill:#2f6fd6;fill-opacity:.42;stroke:#fff;stroke-width:2.5;vector-effect:non-scaling-stroke}
+.parksign rect{fill:#1f5fc9;stroke:#fff;stroke-width:1.5;vector-effect:non-scaling-stroke}
+.parksign text{fill:#fff;font-family:var(--f-display);font-weight:800;text-anchor:middle;dominant-baseline:central}
+.parksign{pointer-events:none}
+.stall{stroke:#fff;stroke-width:.5;stroke-opacity:.9}
+.cab{fill:#1b2129;fill-opacity:.55}
+.unitln{stroke:#11161c;stroke-width:.3}
+.sitemt{fill:#fff;font-family:var(--f-display);font-weight:700;text-anchor:middle;dominant-baseline:central;paint-order:stroke;stroke:#11161c;stroke-width:.25em;stroke-linejoin:round;pointer-events:none}
+.selbox{fill:none;stroke:var(--sel,#f09a45);stroke-width:2;vector-effect:non-scaling-stroke;stroke-dasharray:5 3}
+.sitelist{display:flex;flex-direction:column;gap:4px;margin-top:10px}
+.sitelist .row{display:flex;align-items:center;gap:6px;padding:4px 6px;border:1px solid var(--line,#2b3540);border-radius:6px;background:transparent;color:inherit;text-align:left;cursor:pointer;font:inherit}
+.sitelist .row.sel{border-color:var(--sel,#f09a45)}
+.sitelist .sw{width:12px;height:12px;border-radius:3px;flex:none;border:1px solid #11161c}
+.sitelist .nm{flex:1;min-width:0}
+.sitelist .sz{color:var(--muted,#97a3b0);font-size:.85em;white-space:nowrap}
+.siteadd{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.siteadd .btn{justify-content:flex-start;text-align:left;font-size:.9em}
+.siteadd .sw{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;border:1px solid #11161c;vertical-align:-1px}
+.selinfo .sw{width:14px;height:14px;border-radius:3px;flex:none;border:1px solid #11161c}
+.selinfo .sitename{width:150px}
+.selinfo .field.inline{display:flex;align-items:center;gap:4px;margin:0}
+.selinfo .field.inline input{width:64px}
+.stagefront{fill:var(--sel,#f09a45);pointer-events:none}

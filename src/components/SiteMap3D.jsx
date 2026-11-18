@@ -6,8 +6,10 @@ import 'mapbox-gl/dist/mapbox-gl.css';
 import * as THREE from 'three';
 import Scene3D from '../three/Scene3D.js';
 import { MAPBOX_TOKEN } from '../lib/mapbox.js';
+import { isFestival } from '../edition.js';
 import { tentOrigin } from '../lib/planner.js';
 import { outline } from '../lib/shape.js';
+import { siteDef, itemPoly, roofLocal, itemAt } from '../lib/siteItems.js';
 
 const FT = 0.3048; // metres per foot
 const HIT = 3;     // feet of slack round a tent when clicking it (the roof stands above the ground point)
@@ -63,9 +65,9 @@ function tentAt(tents, p) {
  * tents: [{ st, lay }]; photo: model.photo from Mapbox (lat, lng, pw, ph, fpp); photoSrc: that image.
  * onPickTent(i): a tent was clicked. onMoveTent(i, x, y): drag a tent so its top-left (unturned) is at x, y feet.
  */
-export default function SiteMap3D({ tents, active, sel, photo, photoSrc, onPickTent, onMoveTent, onDeselect }) {
+export default function SiteMap3D({ tents, active, sel, photo, photoSrc, onPickTent, onMoveTent, onDeselect, siteItems = [], onPickItem, onMoveItem }) {
   const boxRef = useRef(null), mapRef = useRef(null), builderRef = useRef(null), frameRef = useRef(null);
-  const live = useRef({}); live.current = { tents, active, onPickTent, onMoveTent, onDeselect };
+  const live = useRef({}); live.current = { tents, active, onPickTent, onMoveTent, onDeselect, siteItems, onPickItem, onMoveItem };
   const [ready, setReady] = useState(false);
   const [err, setErr] = useState(null);
   const [roof, setRoof] = useState(true);
@@ -112,6 +114,16 @@ export default function SiteMap3D({ tents, active, sel, photo, photoSrc, onPickT
     map.on('style.load', () => {
       map.setFog({ range: [1, 12], color: '#dfe7ef', 'horizon-blend': 0.08 });
       if (map.getLayer('background')) map.setPaintProperty('background', 'background-color', '#2a3038');
+      // the style's own satellite source uses Mapbox's raster tiles API, which this token may not be allowed to use
+      // (it answers 429 to every tile, leaving only the site photo); draw the same imagery from the Static Tiles API
+      const sat = map.getStyle().layers.find((l) => l.type === 'raster' && l.source === 'mapbox-satellite');
+      if (sat) {
+        const before = map.getStyle().layers[map.getStyle().layers.findIndex((l) => l.id === sat.id) + 1]?.id;
+        map.removeLayer(sat.id); map.removeSource('mapbox-satellite');
+        map.addSource('sat-tiles', { type: 'raster', tileSize: 512, maxzoom: 22, attribution: '© Maxar',
+          tiles: [`https://api.mapbox.com/styles/v1/mapbox/satellite-v9/tiles/512/{z}/{x}/{y}@2x?access_token=${MAPBOX_TOKEN}`] });
+        map.addLayer({ id: 'satellite', type: 'raster', source: 'sat-tiles', paint: { 'raster-fade-duration': 150 } }, before);
+      }
       // the site's own satellite photo, laid at its exact spot and scale: the tent area always has imagery,
       // even where the map's satellite tiles are missing or older
       const firstVector = map.getStyle().layers.find((l) => l.type !== 'background' && l.type !== 'raster');
@@ -127,6 +139,20 @@ export default function SiteMap3D({ tents, active, sel, photo, photoSrc, onPickT
       map.addLayer({ id: 'buildings-3d', type: 'fill-extrusion', source: 'composite', 'source-layer': 'building', minzoom: 14,
         filter: ['==', ['get', 'extrude'], 'true'],
         paint: { 'fill-extrusion-color': '#cfd5dc', 'fill-extrusion-height': ['get', 'height'], 'fill-extrusion-base': ['get', 'min_height'], 'fill-extrusion-opacity': 0.55 } });
+      // outdoor site items: flat areas on the ground, everything else as a coloured block of its real height
+      map.addSource('site-items', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+      map.addLayer({ id: 'site-items-flat', type: 'fill', source: 'site-items', filter: ['==', ['get', 'h'], 0],
+        paint: { 'fill-color': ['get', 'color'], 'fill-opacity': 0.55, 'fill-outline-color': '#ffffff' } });
+      // a solid white border so flat areas (parking, seating) stand out on the satellite imagery
+      map.addLayer({ id: 'site-items-edge', type: 'line', source: 'site-items', filter: ['==', ['get', 'h'], 0],
+        paint: { 'line-color': '#ffffff', 'line-width': 2.5 } });
+      map.addLayer({ id: 'site-items-3d', type: 'fill-extrusion', source: 'site-items', filter: ['>', ['get', 'h'], 0],
+        paint: { 'fill-extrusion-color': ['get', 'color'], 'fill-extrusion-height': ['get', 'h'], 'fill-extrusion-base': ['get', 'base'], 'fill-extrusion-opacity': 0.92 } });
+      map.addLayer({ id: 'site-items-sel', type: 'line', source: 'site-items', filter: ['all', ['get', 'sel'], ['!', ['get', 'roof']]],
+        paint: { 'line-color': '#f09a45', 'line-width': 3, 'line-dasharray': [2, 1] } });
+      map.addLayer({ id: 'site-items-label', type: 'symbol', source: 'site-items', filter: ['!', ['get', 'roof']],
+        layout: { 'text-field': ['get', 'label'], 'text-size': 11, 'text-allow-overlap': false, 'text-font': ['DIN Pro Bold', 'Arial Unicode MS Bold'] },
+        paint: { 'text-color': '#ffffff', 'text-halo-color': '#11161c', 'text-halo-width': 1.4 } });
       map.addLayer(tentLayer);
       setReady(true);
     });
@@ -134,7 +160,13 @@ export default function SiteMap3D({ tents, active, sel, photo, photoSrc, onPickT
     // drag a tent; anything else pans and turns the map as usual
     let drag = null;
     const down = (e) => {
-      const p = frame.toSite([e.lngLat.lng, e.lngLat.lat]), L = live.current, i = tentAt(L.tents, p);
+      const p = frame.toSite([e.lngLat.lng, e.lngLat.lat]), L = live.current;
+      const k = itemAt(L.siteItems, p, 1);
+      if (k >= 0 && L.onMoveItem) {
+        e.preventDefault(); L.onPickItem(k);
+        drag = { item: k, dx: p.x - L.siteItems[k].x, dy: p.y - L.siteItems[k].y }; map.getCanvas().style.cursor = 'grabbing'; return;
+      }
+      const i = tentAt(L.tents, p);
       if (i < 0) { L.onDeselect(); return; }
       e.preventDefault(); // stops the map panning for this gesture
       L.onPickTent(i);
@@ -143,8 +175,9 @@ export default function SiteMap3D({ tents, active, sel, photo, photoSrc, onPickT
     };
     const move = (e) => {
       const p = frame.toSite([e.lngLat.lng, e.lngLat.lat]);
+      if (drag && drag.item != null) { live.current.onMoveItem(drag.item, p.x - drag.dx, p.y - drag.dy); return; }
       if (drag) { live.current.onMoveTent(drag.i, p.x - drag.dx, p.y - drag.dy); return; }
-      map.getCanvas().style.cursor = tentAt(live.current.tents, p) >= 0 ? 'move' : '';
+      map.getCanvas().style.cursor = tentAt(live.current.tents, p) >= 0 || itemAt(live.current.siteItems, p, 1) >= 0 ? 'move' : '';
     };
     const up = () => { if (drag) { drag = null; map.getCanvas().style.cursor = ''; } };
     map.on('mousedown', down); map.on('touchstart', (e) => { if (e.points?.length === 1) down(e); });
@@ -161,10 +194,22 @@ export default function SiteMap3D({ tents, active, sel, photo, photoSrc, onPickT
   // frame the tents once the map is up
   useEffect(() => {
     const map = mapRef.current, f = frameRef.current; if (!ready || !map || !f) return;
-    const pts = tents.flatMap((t) => footprint(t, 40)).map(([x, y]) => f.toLngLat(x, y));
+    const pts = [...tents.flatMap((t) => footprint(t, 40)), ...siteItems.flatMap((it) => itemPoly(it))].map(([x, y]) => f.toLngLat(x, y));
     const b = pts.reduce((bb, p) => bb.extend(p), new mapboxgl.LngLatBounds(pts[0], pts[0]));
     map.fitBounds(b, { padding: 40, pitch: 58, bearing: -20, duration: 0, maxZoom: 21 });
   }, [ready]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // bring a newly added or picked outdoor item into view (new items can land well away from the tents)
+  const lastSel = useRef(sel);
+  useEffect(() => {
+    const map = mapRef.current, f = frameRef.current, prev = lastSel.current; lastSel.current = sel;
+    if (!ready || !map || !f || sel === prev || !/^s:\d+$/.test(sel || '')) return;
+    const it = siteItems[+sel.slice(2)]; if (!it) return;
+    const pts = itemPoly(it).map(([x, y]) => map.project(f.toLngLat(x, y))), { width, height } = map.getCanvas().getBoundingClientRect();
+    if (pts.every((p) => p.x > 30 && p.y > 30 && p.x < width - 30 && p.y < height - 30)) return; // already on screen
+    const zoom = Math.max(map.getZoom(), 17.5);
+    map.easeTo({ center: f.toLngLat(it.x, it.y), zoom, duration: 800 });
+  }, [ready, sel, siteItems]);
 
   // rebuild the tent models and ground outlines whenever the plan changes (once per frame at most)
   useEffect(() => {
@@ -181,10 +226,19 @@ export default function SiteMap3D({ tents, active, sel, photo, photoSrc, onPickT
           { type: 'Feature', properties: { kind: 'clear', active: false }, geometry: { type: 'LineString', coordinates: ring(footprint(t, 20)) } },
         ]),
       });
+      // outdoor items, in metres for the extrusions; a stage area also gets a roof block on top
+      const feats = [];
+      siteItems.forEach((it, i) => {
+        const d = siteDef(it), poly = [ring(itemPoly(it))], label = (d.short || '').toLowerCase().replace(/(^|\s)\S/g, (c) => c.toUpperCase());
+        const props = { h: d.h * FT, base: 0, color: d.color, label, sel: sel === 's:' + i, roof: false };
+        feats.push({ type: 'Feature', properties: props, geometry: { type: 'Polygon', coordinates: poly } });
+        if (d.roof) feats.push({ type: 'Feature', properties: { ...props, h: d.roof * FT, base: (d.roof - 1.5) * FT, color: '#2b3038', roof: true }, geometry: { type: 'Polygon', coordinates: [ring(itemPoly(it, roofLocal(it)))] } });
+      });
+      map.getSource('site-items')?.setData({ type: 'FeatureCollection', features: feats });
       map.triggerRepaint();
     });
     return () => cancelAnimationFrame(raf);
-  }, [ready, tents, active, sel, roof, walls]);
+  }, [ready, tents, active, sel, roof, walls, siteItems]);
 
   useEffect(() => {
     const map = mapRef.current; if (!ready || !map || !map.getLayer('buildings-3d')) return;
@@ -203,7 +257,7 @@ export default function SiteMap3D({ tents, active, sel, photo, photoSrc, onPickT
         <label className="chk"><input type="checkbox" checked={roof} onChange={(e) => setRoof(e.target.checked)} /> Roof</label>
         <label className="chk"><input type="checkbox" checked={walls} onChange={(e) => setWalls(e.target.checked)} /> Sidewalls</label>
         <label className="chk"><input type="checkbox" checked={buildings} onChange={(e) => setBuildings(e.target.checked)} /> 3D buildings</label>
-        <span className="hint hint3">Drag a tent to move it · drag the map to pan · right-drag or Ctrl-drag to tilt and turn</span>
+        <span className="hint hint3">Drag a tent{isFestival ? ' or outdoor item' : ''} to move it · drag the map to pan · right-drag or Ctrl-drag to tilt and turn</span>
       </div>
       <div className="map3dstage" ref={boxRef}>{err && <p className="hint msg3d">{err}</p>}</div>
     </div>

@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { clone, store } from '../lib/planner.js';
+import { skey } from '../edition.js';
 
-const savedList = () => store('tlp-saved') || {};
+const savedList = () => store(skey('tlp-saved')) || {};
 // name of the saved layout the working plan came from ('' = a new, unsaved plan); survives page reloads
-const linkedName = () => { const n = store('tlp-current-name'); return typeof n === 'string' ? n : ''; };
+const linkedName = () => { const n = store(skey('tlp-current-name')); return typeof n === 'string' ? n : ''; };
 
 /** model: the whole plan (site + every tent) — that is what gets saved. */
 export default function SavedLayouts({ model, ph, photoSrc, onLoad, onNew }) {
@@ -20,7 +21,7 @@ export default function SavedLayouts({ model, ph, photoSrc, onLoad, onNew }) {
 
   useEffect(() => () => clearTimeout(armTimer.current), []);
 
-  const setLinked = (n) => { setLinkedState(n); store('tlp-current-name', n); };
+  const setLinked = (n) => { setLinkedState(n); store(skey('tlp-current-name'), n); };
   const disarm = () => { clearTimeout(armTimer.current); setArmedState(null); };
   /** First click arms the action and returns false; a second click within 4 s returns true. */
   const confirmed = (what, msg) => {
@@ -46,10 +47,10 @@ export default function SavedLayouts({ model, ph, photoSrc, onLoad, onNew }) {
     disarm();
     let msg = s[n] ? `Updated “${n}”.` : `Saved “${n}” in this browser.`;
     s[n] = { ...clone(model), photoSrc: ph ? photoSrc : null };
-    try { localStorage.setItem('tlp-saved', JSON.stringify(s)); }
+    try { localStorage.setItem(skey('tlp-saved'), JSON.stringify(s)); }
     catch {
       s[n].photoSrc = null; s[n].photo = null; msg = `Saved “${n}” without the photo; browser storage is full.`;
-      try { localStorage.setItem('tlp-saved', JSON.stringify(s)); } catch { setHint('This browser will not save layouts.'); return; }
+      try { localStorage.setItem(skey('tlp-saved'), JSON.stringify(s)); } catch { setHint('This browser will not save layouts.'); return; }
     }
     setSaved(savedList()); setPick(n); setLinked(n); setHint(msg);
   };
@@ -62,7 +63,7 @@ export default function SavedLayouts({ model, ph, photoSrc, onLoad, onNew }) {
   const del = () => {
     if (!current) return;
     if (!confirmed('delete', `Click “Confirm delete” to delete “${current}”.`)) return;
-    const s = savedList(); delete s[current]; store('tlp-saved', s);
+    const s = savedList(); delete s[current]; store(skey('tlp-saved'), s);
     if (current === linked) setLinked('');
     setSaved(s); setHint(`Deleted “${current}”.`);
   };

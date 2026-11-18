@@ -1,6 +1,38 @@
 import { Fragment, useRef, useState } from 'react';
 import { SITES, TENTS, SEATING, ACC, DANCE, CHAIR_STYLES, LIGHT_STYLES } from '../lib/constants.js';
 import NumInput from './NumInput.jsx';
+import { EDITION } from '../edition.js';
+import { SITE_ITEMS, siteDef, siteName, itemSize } from '../lib/siteItems.js';
+
+/** Outdoor items around the tents: one button per kind to add one, then the list of what is on the site. */
+function SiteItemsPanel({ items, sel, onAdd, onPick, onRemove }) {
+  return (
+    <section>
+      <h2>Outdoor site items</h2>
+      <p className="hint">Add what goes around the tents. Each one lands on open ground on the site plan; drag it into place, and use the bar above the plan to resize, turn or remove it.</p>
+      <div className="siteadd">
+        {Object.entries(SITE_ITEMS).map(([k, d]) => (
+          <button key={k} className="btn sm" onClick={() => onAdd(k)} title={`Add a ${d.label.toLowerCase()} (${d.l}' × ${d.w}')`}>
+            <span className="sw" style={{ background: d.color }} aria-hidden="true" />+ {d.label.split(' (')[0]}
+          </button>
+        ))}
+      </div>
+      {items.length > 0 && (
+        <div className="sitelist">
+          {items.map((it, i) => (
+            <div key={i} className={'row' + (sel === 's:' + i ? ' sel' : '')} role="button" tabIndex={0}
+              onClick={() => onPick(i)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onPick(i); } }}>
+              <span className="sw" style={{ background: siteDef(it).color }} aria-hidden="true" />
+              <span className="nm">{siteName(items, i)}</span>
+              <span className="sz">{itemSize(it)}</span>
+              <button className="btn sm danger" aria-label={`Remove ${siteName(items, i)}`} onClick={(e) => { e.stopPropagation(); onRemove(i); }}>×</button>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
 import SavedLayouts from './SavedLayouts.jsx';
 import ExitsEditor from './ExitsEditor.jsx';
 import TentsEditor from './TentsEditor.jsx';
@@ -133,6 +165,7 @@ function AccList({ st, update }) {
 export default function Rail({
   st, lay, model, tents, active, sel, onSelect, update, ph, photoSrc, onPhotoFile, onSatellite, onCalib, onPhotoDel, onPhotoScale, onLoadLayout, onNewLayout,
   onPickTent, onAddTent, onDuplicateTent, onRemoveTent, onArrange, onAddTable, onResetTables,
+  siteItems = [], onAddSiteItem, onPickSiteItem, onRemoveSiteItem,
 }) {
   const fileRef = useRef(null);
   // satellite image from Mapbox: how wide an area to show, and how the last request went
@@ -218,12 +251,16 @@ export default function Rail({
       <TentsEditor tents={tents} active={active} st={st} update={update}
         onPick={onPickTent} onAdd={onAddTent} onDuplicate={onDuplicateTent} onRemove={onRemoveTent} />
 
+      {Object.keys(SITE_ITEMS).length > 0 && (
+        <SiteItemsPanel items={siteItems} sel={sel} onAdd={onAddSiteItem} onPick={onPickSiteItem} onRemove={onRemoveSiteItem} />
+      )}
+
       <section>
-        <h2>Guests &amp; seating{tents.length > 1 ? ` · ${st.name}` : ''}</h2>
-        <div className="field"><span>Guest count</span>
+        <h2>{EDITION.guestsWord} &amp; seating{tents.length > 1 ? ` · ${st.name}` : ''}</h2>
+        <div className="field"><span>{EDITION.guestsWord === 'Guests' ? 'Guest count' : 'Attendance (per tent)'}</span>
           <div className="guests">
             <NumInput min={1} max={2000} aria-label="Guest count" value={st.guests} parse={parseInt} valid={(n) => n >= 1} onValue={(v) => update((n) => { n.guests = Math.min(2000, v); })} />
-            <input type="range" min={10} max={600} step={5} aria-label="Guest count slider" value={Math.min(600, st.guests)}
+            <input type="range" min={10} max={EDITION.id === 'festival' ? 2000 : 600} step={5} aria-label="Guest count slider" value={Math.min(EDITION.id === 'festival' ? 2000 : 600, st.guests)}
               onChange={(e) => { const v = parseInt(e.target.value, 10); update((n) => { n.guests = v; }); }} />
           </div>
         </div>

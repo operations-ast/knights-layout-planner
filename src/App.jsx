@@ -6,7 +6,7 @@ import {
 import { wallSideAt } from './lib/shape.js';
 import { MAX_SEATS, SEATING } from './lib/constants.js';
 import { viewOf, writeBack, migrate, blankTent, placeTent, arrangeTents, tentBox } from './lib/model.js';
-import logoUrl from './assets/knights-logo.png';
+import { EDITION, skey, logoForDark } from './edition.js';
 import Rail from './components/Rail.jsx';
 import PdfPreview from './components/PdfPreview.jsx';
 import PlanSvg from './components/PlanDrawing.jsx';
@@ -14,22 +14,26 @@ import SelInfo from './components/SelInfo.jsx';
 import View3D from './components/View3D.jsx';
 import { Stats, TitleBlock, RentalList, Notes } from './components/Panels.jsx';
 import { geocode, satelliteImage } from './lib/mapbox.js';
+import { newItem } from './lib/siteItems.js';
 // the 3D map (Mapbox GL) is large, so it loads only when the site plan shows it
 const SiteMap3D = lazy(() => import('./components/SiteMap3D.jsx'));
 
 function loadInitial() {
-  const saved = store('tlp-current');
+  const saved = store(skey('tlp-current'));
   // older saves are a single flat tent; migrate() turns either shape into a multi-tent plan
   const model = migrate(saved && (saved.acc || saved.tents) ? saved : null);
   let photo = null;
-  if (model.photo) { try { photo = localStorage.getItem('tlp-photo'); } catch { /* ignore */ } if (!photo) model.photo = null; }
+  if (model.photo) { try { photo = localStorage.getItem(skey('tlp-photo')); } catch { /* ignore */ } if (!photo) model.photo = null; }
   return { model, photo };
 }
 
-function savePhoto(src) { try { if (src) localStorage.setItem('tlp-photo', src); else localStorage.removeItem('tlp-photo'); } catch { /* storage full or blocked */ } }
+function savePhoto(src) { try { if (src) localStorage.setItem(skey('tlp-photo'), src); else localStorage.removeItem(skey('tlp-photo')); } catch { /* storage full or blocked */ } }
 
 export default function App() {
   const [init] = useState(loadInitial);
+  // a black logo is inverted by CSS; a colour logo is recoloured for the dark header (greys to white, brand red kept)
+  const [logoSrc, setLogoSrc] = useState(EDITION.logoMode === 'mono' ? EDITION.logo : null);
+  useEffect(() => { if (EDITION.logoMode !== 'mono') logoForDark(720).then((l) => setLogoSrc(l.url), () => setLogoSrc(EDITION.logo)); }, []);
   const [model, setModel] = useState(init.model);
   const [photoSrc, setPhotoSrc] = useState(init.photo);
   const [view, setViewState] = useState('tent');
@@ -51,7 +55,7 @@ export default function App() {
   const tentList = useMemo(() => views.map((v, i) => ({ st: v, lay: lays[i] })), [views, lays]);
   const st = views[active], lay = lays[active];
 
-  useEffect(() => { store('tlp-current', model); }, [model]);
+  useEffect(() => { store(skey('tlp-current'), model); }, [model]);
 
   /** Edit the active tent: fn gets a merged site + tent copy; changes are written back to the plan. */
   const update = useCallback((fn) => setModel((m) => { const n = clone(m); const v = viewOf(n, n.active); fn(v); writeBack(n, n.active, v); return n; }), []);
@@ -76,6 +80,25 @@ export default function App() {
     setSel(null);
   };
   const arrangeAll = () => updateModel((n) => arrangeTents(n, ph));
+
+  // --- outdoor site items (sel 's:<index>') ---
+  const siteIdx = sel && sel.startsWith('s:') ? +sel.slice(2) : -1;
+  const siteItem = siteIdx >= 0 ? (model.siteItems || [])[siteIdx] : null;
+  const editSiteItem = (i, fn) => updateModel((n) => { if (n.siteItems && n.siteItems[i]) fn(n.siteItems[i], n); });
+  /** Show the site plan with item i picked. */
+  const pickSiteItem = (i) => { if (view !== 'site') { setViewState('site'); setCalib(null); } setSel(i == null ? null : 's:' + i); };
+  const addSiteItem = (type) => {
+    const i = (model.siteItems || []).length, it = newItem(type, views, lays, ph);
+    updateModel((n) => { n.siteItems = [...(n.siteItems || []), it]; });
+    pickSiteItem(i);
+  };
+  const duplicateSiteItem = (i) => {
+    const src = (model.siteItems || [])[i]; if (!src) return;
+    const j = model.siteItems.length, a = (src.rot || 0) * Math.PI / 180, step = src.l + 4;
+    updateModel((n) => { n.siteItems = [...n.siteItems, { ...src, name: undefined, x: snap(src.x + step * Math.cos(a)), y: snap(src.y + step * Math.sin(a)) }]; });
+    setSel('s:' + j);
+  };
+  const removeSiteItem = (i) => { updateModel((n) => { n.siteItems = (n.siteItems || []).filter((_, k) => k !== i); }); setSel(null); };
 
   // --- helpers that mutate a state copy `n` using the current layout ---
   const tkey = `${lay.W}x${lay.L}`;
@@ -189,6 +212,12 @@ export default function App() {
       drag.current = { hseat: i, ox: c.x, oy: c.y, px: p.x, py: p.y, moved: false };
       setSel('h:' + i); svg.setPointerCapture(e.pointerId); setDragging(true); e.preventDefault(); return;
     }
+    const sg = e.target.closest('[data-site]');
+    if (sg) {
+      const i = +sg.dataset.site, it = (model.siteItems || [])[i]; if (!it) return; const p = svgPt(e);
+      drag.current = { site: i, ox: it.x, oy: it.y, px: p.x, py: p.y, moved: false };
+      setSel('s:' + i); svg.setPointerCapture(e.pointerId); setDragging(true); e.preventDefault(); return;
+    }
     const g = e.target.closest('[data-key]');
     if (!g) { setSel(null); return; }
     const key = g.dataset.key, p = svgPt(e);
@@ -221,6 +250,7 @@ export default function App() {
       update((n) => { if (first || !n.tables) freezeTables(n); moveUnit(n, d.unit, snap(d.ox + dx), snap(d.oy + dy)); });
       return;
     }
+    if (d.site != null) { d.moved = true; editSiteItem(d.site, (it) => { it.x = snap(d.ox + dx); it.y = snap(d.oy + dy); }); return; }
     d.moved = true;
     if (d.key === '__tent') { update((n) => { n.tentPos = { x: snap(d.ox + dx), y: snap(d.oy + dy) }; }); return; }
     const it = lay.items.find((i) => i.key === d.key); if (!it) return;
@@ -235,12 +265,14 @@ export default function App() {
   // --- selection actions ---
   const curAngle = () => {
     if (sel === '__tent') return st.tentAngle || 0;
+    if (siteItem) return siteItem.rot || 0;
     if (sel && sel.startsWith('u:')) { const u = lay.units[+sel.slice(2)]; return u ? u.rot || 0 : 0; }
     const it = lay.items.find((i) => i.key === sel); return it ? it.rot : 0;
   };
   const setAngle = (a) => {
     if (!sel || !Number.isFinite(a)) return;
     if (sel === '__tent') { update((n) => { n.tentAngle = norm180(a); }); return; }
+    if (siteItem) { editSiteItem(siteIdx, (it) => { it.rot = norm180(a); }); return; }
     if (sel.startsWith('u:')) {
       const i = +sel.slice(2); if (!lay.units[i]) return;
       update((n) => { freezeTables(n); n.tables.pts[i] = { ...n.tables.pts[i], rot: norm360(a) }; }); return;
@@ -281,6 +313,11 @@ export default function App() {
     if (e.key === 'r' || e.key === 'R') { e.preventDefault(); rotateBy(e.shiftKey ? 15 : 90); return; }
     if (sel === '__tent') {
       if (m && view === 'site') { e.preventDefault(); const o = tentOrigin(st, lay, ph); update((n) => { n.tentPos = { x: o.x + m[0], y: o.y + m[1] }; }); }
+      return;
+    }
+    if (siteItem && view === 'site') {
+      if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); removeSiteItem(siteIdx); return; }
+      if (m) { e.preventDefault(); editSiteItem(siteIdx, (it) => { it.x += m[0]; it.y += m[1]; }); }
       return;
     }
     if (view !== 'tent') return;
@@ -334,6 +371,8 @@ export default function App() {
       const n = clone(s); n.photo = photo;
       for (const t of n.tents) t.tentAngle = 0;
       arrangeTents(n, true); // new photo = new coordinates; lay the tents out again over it
+      // outdoor items keep their spot but stay on the new photo
+      if (n.siteItems) { const e = { l: photo.pw * photo.fpp, w: photo.ph * photo.fpp }; n.siteItems = n.siteItems.map((it) => ({ ...it, x: clamp(it.x, it.l / 2, Math.max(it.l / 2, e.l - it.l / 2)), y: clamp(it.y, it.w / 2, Math.max(it.w / 2, e.w - it.w / 2)) })); }
       return n;
     });
     setCalib(photo.calibrated ? null : { pts: [] }); setViewState('site'); setSel(null);
@@ -416,10 +455,10 @@ export default function App() {
 
   return (<>
     <header className="top">
-      <img className="logo" src={logoUrl} alt="Knights Tent & Party Rental" />
+      {logoSrc ? <img className={'logo' + (EDITION.logoMode === 'mono' ? '' : ' color')} src={logoSrc} alt={EDITION.logoAlt} /> : <span className="logo color" aria-hidden="true" />}
       <div>
-        <h1>Tent Layout Planner</h1>
-        <p>Set the site, guest count and extras. The tent size, plan and rental list update as you go. Drag any floor item to move it.</p>
+        <h1>{EDITION.title}</h1>
+        <p>{EDITION.intro} <a className="otherplanner" href={EDITION.other.href}>Open the {EDITION.other.label.toLowerCase()} →</a></p>
       </div>
       <button className="btn primary pdfbtn" onClick={downloadPdf} disabled={pdfState === 'busy'} aria-live="polite"
         title="Download a client-ready PDF: overview, 3D preview, floor plans and rental summary">
@@ -435,7 +474,8 @@ export default function App() {
         sel={sel} onSelect={selectFromRail} update={update} ph={ph} photoSrc={photoSrc}
         onPhotoFile={loadPhoto} onSatellite={loadSatellite} onCalib={startCalib} onPhotoDel={removePhoto} onPhotoScale={scalePhoto} onLoadLayout={loadLayout} onNewLayout={newLayout}
         onPickTent={pickTent} onAddTent={() => addTent(false)} onDuplicateTent={() => addTent(true)} onRemoveTent={removeTent} onArrange={arrangeAll}
-        onAddTable={addTable} onResetTables={resetTables} />
+        onAddTable={addTable} onResetTables={resetTables}
+        siteItems={model.siteItems || []} onAddSiteItem={addSiteItem} onPickSiteItem={pickSiteItem} onRemoveSiteItem={removeSiteItem} />
 
       <main className="sheet">
         <Stats st={st} lay={lay} count={model.tents.length} />
@@ -460,6 +500,8 @@ export default function App() {
             )}
             <button className="btn" onClick={autoArrange}>Auto-arrange</button>
             <SelInfo view={view} calib={calib} sel={sel} lay={lay} st={st}
+              siteItem={siteItem} siteIdx={siteIdx} onSiteEdit={(fn) => editSiteItem(siteIdx, fn)}
+              onSiteDuplicate={() => duplicateSiteItem(siteIdx)} onSiteRemove={() => removeSiteItem(siteIdx)}
               onCancelCalib={() => setCalib(null)} onApplyCalib={applyCalib}
               onRotate={rotateBy} onSetAngle={setAngle} onRemove={removeSel}
               onReflow={() => { update((n) => { n.tables = null; }); setSel(null); }}
@@ -480,7 +522,9 @@ export default function App() {
                 <SiteMap3D tents={tentList} active={active} sel={sel} photo={model.photo} photoSrc={photoSrc}
                   onPickTent={(i) => { if (i !== active) updateModel((n) => { n.active = i; }); setSel('__tent'); }}
                   onMoveTent={(i, x, y) => updateModel((n) => { if (n.tents[i]) n.tents[i].tentPos = { x: snap(x), y: snap(y) }; })}
-                  onDeselect={() => setSel(null)} />
+                  onDeselect={() => setSel(null)}
+                  siteItems={model.siteItems || []} onPickItem={(i) => setSel('s:' + i)}
+                  onMoveItem={(i, x, y) => editSiteItem(i, (it) => { it.x = snap(x); it.y = snap(y); })} />
               </Suspense>
             ) : (
               <PlanSvg st={st} lay={lay} tents={tentList} active={active} view={view} sel={sel} calib={view === 'site' ? calib : null} ph={ph} photoSrc={photoSrc}

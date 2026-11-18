@@ -1,5 +1,6 @@
 // Pure layout logic. Every function takes the planner state `st` explicitly.
 import { TENTS, SEATING, ACC, WALLROT, G, DANCE, EXIT_SPOTS, DEFAULT, STANDING_SQFT } from './constants.js';
+import { isFestival } from '../edition.js';
 import { tentShape, yTop, xLeft, rectInside, evenPoints, perimeter, area as shapeArea } from './shape.js';
 
 export const clone = (o) => JSON.parse(JSON.stringify(o));
@@ -26,6 +27,9 @@ export function mergeState(s) {
   const customOk = n.tentCustom && !TENTS[n.tentType].shape && /^\d+(\.\d+)?x\d+(\.\d+)?$/.test(n.tentSize);
   if (!customOk) n.tentCustom = false;
   if (n.tentSize !== 'auto' && !customOk && !TENTS[n.tentType].sizes.some(([w, l]) => `${w}x${l}` === n.tentSize)) { n.tentSize = 'auto'; n.pos = {}; n.tables = null; }
+  // outdoor site items: keep only well-formed entries
+  n.siteItems = (Array.isArray(n.siteItems) ? n.siteItems : []).filter((it) => it && typeof it.type === 'string' && [it.x, it.y, it.l, it.w].every(Number.isFinite))
+    .map((it) => ({ ...it, l: clamp(it.l, 2, 1000), w: clamp(it.w, 2, 1000), rot: Number.isFinite(it.rot) ? it.rot : 0 }));
   delete n.photoSrc;
   return n;
 }
@@ -48,7 +52,9 @@ export function danceDims(st, s) {
   const z = F.sizes.includes(s.size) ? s.size : F.sizes.find((z) => szDims(z)[0] * szDims(z)[1] >= danceNeed(st)) || F.sizes[F.sizes.length - 1];
   return szDims(z);
 }
-export const autoQty = (id, g) => id === 'highboy' ? Math.max(2, Math.ceil(g / 25)) : id === 'buffet' ? clamp(Math.ceil(g / 125), 1, 4) : clamp(Math.ceil(g / 150), 1, 4);
+// festival: one 10' × 10' vendor booth per 50 attendees (2 to 30), food lines per 250
+export const autoQty = (id, g) => id === 'highboy' ? Math.max(2, Math.ceil(g / 25)) : id === 'booth' ? clamp(Math.ceil(g / 50), 2, 30)
+  : id === 'buffet' ? clamp(Math.ceil(g / (isFestival ? 250 : 125)), 1, 4) : clamp(Math.ceil(g / 150), 1, isFestival ? 8 : 4);
 export function exitCount(g) { return g < 10 ? 1 : g < 200 ? 2 : g < 500 ? 3 : g < 1000 ? 4 : g < 2000 ? 5 : 6; }
 
 function stepPts(len, max) { const n = Math.max(1, Math.ceil(len / max - 1e-6)); return Array.from({ length: n + 1 }, (_, i) => i * len / n); }

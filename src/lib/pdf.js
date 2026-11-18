@@ -1,7 +1,7 @@
 // Client-facing PDF proposal (US Letter, landscape):
 //   1. Overview: event, at-a-glance facts, what's included, 3D preview
 //   2. A floor plan page per tent
-//   3. Site plan (several tents, or a satellite photo)
+//   3. Site plan (several tents, a satellite photo, or outdoor site items)
 //   4. Rental summary
 // The plans are the app's own SVG drawing, re-coloured for paper and rasterised at print resolution.
 import { createElement } from 'react';
@@ -12,13 +12,13 @@ import Scene3D from '../three/Scene3D.js';
 import { allRentals } from './reports.js';
 import { SEATING, SITES, LIGHT_STYLES } from './constants.js';
 import { danceFinish } from './planner.js';
-import logoUrl from '../assets/knights-logo.png';
+import { EDITION, isFestival, logoForDark } from '../edition.js';
 
 const PW = 792, PH = 612, M = 40, CW = PW - 2 * M; // page and content width in points
 // dark presentation, the app's own palette (styles.css :root)
 const PAGE = [16, 21, 27], INK = [228, 233, 238], MUTED = [151, 163, 176], RULE = [43, 53, 64], ACCENT = [109, 167, 230], SOFT = [28, 36, 45];
 const PAGE_HEX = '#10151b';
-const COMPANY = 'Knights Tent & Party Rental';
+const COMPANY = EDITION.company;
 
 // the plan drawing as on screen (dark), minus selection and "doesn't fit" outlines; web fonts can't load inside an SVG image
 const PLAN_CSS = `
@@ -34,20 +34,6 @@ const clean = (s) => String(s ?? '')
   .replace(/ /g, ' ').replace(/[^\x00-\xff–—‘’“”•…€™]/g, '');
 
 const loadImg = (src) => new Promise((ok, bad) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => bad(new Error('Could not load an image for the PDF.')); i.src = src; });
-
-/** Logo for a dark page: the black-on-white file turned into a white mark on transparent, at a modest size. */
-async function logoPng() {
-  const img = await loadImg(logoUrl), w = 700, h = Math.round(w * img.height / img.width);
-  const c = document.createElement('canvas'); c.width = w; c.height = h;
-  const g = c.getContext('2d'); g.drawImage(img, 0, 0, w, h);
-  const px = g.getImageData(0, 0, w, h), d = px.data;
-  for (let i = 0; i < d.length; i += 4) {
-    const dark = 255 - (d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114); // ink amount
-    d[i] = d[i + 1] = d[i + 2] = 255; d[i + 3] = Math.round(dark * d[i + 3] / 255);
-  }
-  g.putImageData(px, 0, 0);
-  return { url: c.toDataURL('image/png'), ar: h / w };
-}
 
 function pageCss() {
   let css = '';
@@ -75,7 +61,7 @@ const tentLabel = (l) => `${l.W}' × ${l.L}' ${l.T.label.split(' (')[0].toLowerC
 const plural = (n, one, many = one + 's') => `${n} ${n === 1 ? one : many}`;
 
 function seatingText(st, l) {
-  if (l.S.kind === 'none') return 'Standing reception';
+  if (l.S.kind === 'none') return EDITION.standingWord;
   if (l.S.kind === 'chair') return `${plural(l.units.length, 'chair')} in ceremony rows`;
   const by = {}; for (const u of l.units) by[u.type] = (by[u.type] || 0) + 1;
   const name = { rounds60: ['round table', ' (60")'], rounds72: ['round table', ' (72")'], banquet: ['banquet table', " (8')"] };
@@ -98,13 +84,18 @@ function features(st, l) {
   for (const d of by.dance || []) out.push(`${danceFinish(st).label} dance floor, ${d.dims[0]}' × ${d.dims[1]}'`);
   for (const s of by.stage || []) out.push(`Stage, ${s.dims[0]}' × ${s.dims[1]}'`);
   for (const h of by.head || []) out.push(h.sweet ? 'Sweetheart table' : `Head table for ${h.seats}`);
-  if (n('buffet')) out.push(n('buffet') > 1 ? `${n('buffet')} buffet lines` : 'Buffet line');
-  if (n('bar')) out.push(n('bar') > 1 ? `${n('bar')} bars` : 'Bar');
+  if (n('foh')) out.push('Sound booth (FOH)');
+  if (n('booth')) out.push(plural(n('booth'), "10' × 10' vendor booth"));
+  if (n('buffet')) out.push(isFestival ? plural(n('buffet'), 'food service line') : n('buffet') > 1 ? `${n('buffet')} buffet lines` : 'Buffet line');
+  if (n('bar')) out.push(isFestival ? plural(n('bar'), 'beer & wine bar') : n('bar') > 1 ? `${n('bar')} bars` : 'Bar');
+  if (n('info')) out.push('Ticket & info table');
+  if (n('merch')) out.push('Merch table');
+  if (n('firstaid')) out.push('First aid station');
   if (n('dj')) out.push('DJ booth');
   if (n('cake')) out.push('Cake table');
   if (n('gift')) out.push('Gift & card table');
-  if (n('photo')) out.push('Photo booth area');
-  if (n('lounge')) out.push('Lounge seating');
+  if (n('photo')) out.push(isFestival ? 'Photo op wall' : 'Photo booth area');
+  if (n('lounge')) out.push(isFestival ? 'VIP lounge' : 'Lounge seating');
   if (n('highboy')) out.push(`${n('highboy')} cocktail tables`);
   if (st.walls !== 'none') out.push(`Sidewalls, ${({ solid: 'solid white', window: 'cathedral window', clear: 'clear' })[st.walls] || st.walls}`);
   if (st.stringLights) out.push(`Bistro string lights (${(LIGHT_STYLES[st.lightStyle || 'swag'] || '').split(' (')[0].toLowerCase()})`);
@@ -201,7 +192,7 @@ function overviewPage(doc, logo, ctx, hero) {
   const colW = 236, top = y, multi = tents.length > 1;
   const guests = tents.reduce((s, t) => s + t.st.guests, 0), seats = tents.reduce((s, t) => s + t.lay.seats + t.lay.headSeats, 0);
   const facts = [
-    ['Guests', String(guests)],
+    [EDITION.guestsWord, String(guests)],
     multi ? ['Tents', tents.map((t) => `${t.st.name}: ${tentLabel(t.lay)}`).join('\n')] : ['Tent', tentLabel(tents[0].lay)],
     ['Seating', multi ? tents.map((t) => `${t.st.name}: ${seatingText(t.st, t.lay)}`).join('\n') : seatingText(tents[0].st, tents[0].lay)],
   ];
@@ -292,7 +283,7 @@ function rentalPages(doc, logo, ctx) {
 export async function makeClientPdf({ model, tents, active = 0, ph, photoSrc }) {
   const date = new Date().toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
   const ctx = { model, tents, date };
-  const [logo, css] = [await logoPng(), pageCss()];
+  const [logo, css] = [await logoForDark(), pageCss()];
   const multi = tents.length > 1;
 
   const plans = [];
@@ -300,7 +291,7 @@ export async function makeClientPdf({ model, tents, active = 0, ph, photoSrc }) 
     const { st, lay } = tents[i];
     plans.push(await planPng({ st, lay, tents, active: i, view: 'tent', ph, photoSrc }, css));
   }
-  const site = multi || ph ? await planPng({ st: tents[active].st, lay: tents[active].lay, tents, active, view: 'site', ph, photoSrc }, css, 1100, 2.2) : null;
+  const site = multi || ph || (tents[0].st.siteItems || []).length ? await planPng({ st: tents[active].st, lay: tents[active].lay, tents, active, view: 'site', ph, photoSrc }, css, 1100, 2.2) : null;
 
   let hero = null;
   const shot = Scene3D.current && Scene3D.current.snapshot(1600, 1050, { light: false });
@@ -313,7 +304,7 @@ export async function makeClientPdf({ model, tents, active = 0, ph, photoSrc }) 
     addPage(doc);
     planPage(doc, logo, plans[i], multi ? `Floor plan · ${st.name}` : 'Floor plan', model.siteName, [
       ['Tent', tentLabel(lay)],
-      ['Guests', String(st.guests)],
+      [EDITION.guestsWord, String(st.guests)],
       ['Seating', seatingText(st, lay)],
       ['Openings', exitText(lay)],
       ['Floor area', `${Math.round(lay.area).toLocaleString()} sq ft`],

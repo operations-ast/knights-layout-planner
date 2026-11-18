@@ -1,6 +1,11 @@
-# Knights Tent Layout Planner
+# Knights Wedding Layout Planner
 
-React + Vite app (dark theme). Runs on localhost until it moves to a server.
+React + Vite app (dark theme). Two planners share one code base:
+
+- `index.html`: Knights **Wedding Layout Planner**
+- `festival.html`: American Structure Tent **Festival Layout Planner** (stages, sound booth, vendor booths, food lines, bars, first aid and other festival items; structure tents by default)
+
+What differs between them (title, logo, company name, site types, floor items, defaults, wording) is in `src/edition.js` and the per-edition tables in `src/lib/constants.js`. Each planner keeps its own plans and saved layouts in the browser.
 
 ## Run locally
 

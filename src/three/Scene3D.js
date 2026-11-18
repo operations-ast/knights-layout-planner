@@ -81,6 +81,17 @@ export default class Scene3D {
       const s = '#8e9ba7';
       this.boxAt(c, 2, 0.6, w - 4, 2.6, 2.6, 0, s); this.boxAt(c, 1, 5.6, 2.6, 2.6, 2.4, 0, s); this.boxAt(c, w - 3.6, 5.6, 2.6, 2.6, 2.4, 0, s); this.boxAt(c, w / 2 - 2.5, 4.6, 5, 2.4, 1.4, 0, '#5d4b3a');
     } else if (id === 'highboy') this.cylAt(c, w / 2, h / 2, 1.25, 3.5, 0, linen);
+    else if (id === 'booth') {
+      // pop-up canopy: four legs and a peaked white top, a table across the front
+      for (const [a, b] of [[0.3, 0.3], [w - 0.6, 0.3], [0.3, h - 0.6], [w - 0.6, h - 0.6]]) this.boxAt(c, a, b, 0.3, 0.3, 7, 0, '#9aa3ad');
+      this.boxAt(c, 0, 0, w, h, 0.4, 7, '#f4f4f2'); this.boxAt(c, w * 0.2, h * 0.2, w * 0.6, h * 0.6, 0.8, 7.4, '#f4f4f2');
+      this.boxAt(c, 2, h - 3, w - 4, 2.5, 2.5, 0, linen);
+    } else if (id === 'foh') { this.boxAt(c, 0, 0, w, h, 1, 0, cssv('--stage')); this.boxAt(c, 1, 2, w - 2, 2.5, 3, 1, dark); }
+    else if (id === 'info' || id === 'merch') { this.boxAt(c, 1, 1.2, w - 2, 2.5, 2.5, 0, id === 'merch' ? dark : linen); if (id === 'merch') this.boxAt(c, 1, 0.2, w - 2, 0.3, 5.5, 0, '#3a434e'); }
+    else if (id === 'firstaid') {
+      this.boxAt(c, 0.5, 0.5, w - 1, h - 1, 0.1, 0, '#f4f4f2');
+      this.boxAt(c, 1.5, 1.5, 6.5, 2.5, 2, 0, '#e8ecef'); this.boxAt(c, w / 2 - 1.5, h - 3, 3, 0.8, 0.12, 0.1, '#d64545'); this.boxAt(c, w / 2 - 0.4, h - 4.1, 0.8, 3, 0.12, 0.1, '#d64545');
+    }
   }
 
   unit3D(parent, u, S, st) {

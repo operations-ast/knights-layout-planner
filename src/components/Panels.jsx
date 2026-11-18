@@ -4,6 +4,8 @@ import { SITES, STANDING_SQFT } from '../lib/constants.js';
 import { exitCount, siteFits } from '../lib/planner.js';
 import { allRentals, rentalText, checks } from '../lib/reports.js';
 import { siteNotes } from '../lib/model.js';
+import { siteItemNotes } from '../lib/siteItems.js';
+import { EDITION } from '../edition.js';
 
 function Tile({ k, v, s, pill }) {
   return (
@@ -43,7 +45,7 @@ export function TitleBlock({ st, lay, view, tents }) {
   const cells = [
     ['Event / site', st.siteName || 'Untitled layout'],
     ['Location', `${st.address || SITES[st.sitePreset].label} · ${st.surface}`],
-    ['Guests', multi && view === 'site' ? `${totalGuests} total` : st.guests],
+    [EDITION.guestsWord, multi && view === 'site' ? `${totalGuests} total` : st.guests],
     ['Tent', multi && view === 'site' ? `${tents.length} tents` : `${multi ? `${st.name} · ` : ''}${W}' × ${L}' ${T.label.split(' (')[0]}`],
     ['Date', today],
     ['Sheet', view === 'tent' ? 'L-1' : 'L-2'],
@@ -91,7 +93,8 @@ export function RentalList({ tents }) {
 /** Checks for the active tent, plus site-wide notes about how the tents sit together. */
 export function Notes({ st, lay, ph, tents }) {
   const multi = tents && tents.length > 1;
-  const site = multi ? siteNotes(tents.map((t) => t.st), tents.map((t) => t.lay), ph) : [];
+  const site = [...(multi ? siteNotes(tents.map((t) => t.st), tents.map((t) => t.lay), ph) : []),
+    ...(tents && tents.length ? siteItemNotes(tents.map((t) => t.st), tents.map((t) => t.lay), ph) : [])];
   const mine = checks(st, lay, ph).map(([c, t]) => [c, multi ? `${st.name}: ${t}` : t]);
   // problems first: site-wide bad/warn, then this tent, then info
   const rank = { bad: 0, warn: 1, ok: 2, info: 3 };
